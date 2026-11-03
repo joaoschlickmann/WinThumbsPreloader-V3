@@ -4,6 +4,15 @@ All notable changes to **WinThumbsPreloader** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.3] - 2026-11-03
+
+### Fixed
+- **False Cache Reset Alerts & Icon Cache Exclusion (`CacheForm`, `AboutForm`)**: Scoped cache size calculation, backup, restore, and cleanup strictly to `thumbcache_*.db` files and automatically purged legacy `iconcache_*.db` files from backup folders so routine Windows Icon Cache resets (`IconCacheToDelete`) no longer trigger false thumbnail cache reset alerts or restore unsanitized icon cache files.
+- **Repeated Reset Alert & Auto-Restore Loop (`AboutForm`, `CacheForm`)**: Fixed the inverted `!recognizedLogged` early-return condition in `AboutForm.CheckForCacheReset` that caused `UpdateTimer_Tick` to re-evaluate cache resets every 250 ms after the first check, synchronized `RestoreThumbsCache` with `CacheBackupLock`, and guarded `ResetRecognized` state transitions while a restore or alert dialog is active.
+- **Clean Explorer Termination During Force Restore (`CacheForm`)**: Switched `CloseExplorerAsync` from `Process.Kill()` (exit code `-1`) to Win32 `TerminateProcess` with exit code `1` so `winlogon.exe` does not treat intentional Explorer closure as an unexpected shell crash (Event ID 1002) and prematurely respawn `explorer.exe` mid-restore.
+
+---
+
 ## [3.1.2] - 2026-11-03
 
 ### Fixed
