@@ -539,5 +539,17 @@ namespace WinThumbsPreloader.Properties {
                 this["AutoBackupAfterPreload"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastUpgradedVersion {
+            get {
+                return ((string)(this["LastUpgradedVersion"]));
+            }
+            set {
+                this["LastUpgradedVersion"] = value;
+            }
+        }
     }
 }
