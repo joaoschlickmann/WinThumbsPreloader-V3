@@ -240,5 +240,142 @@ namespace WinThumbsPreloader.Tests
             Assert.Equal(0x18u, BitConverter.ToUInt32(repairedIdx, 144 + 16 + 4 * 4));
             Assert.Equal(uint.MaxValue, BitConverter.ToUInt32(repairedIdx, 144 + 72 + 16 + 4 * 4));
         }
+
+        [Fact]
+        public void SumDbFilesSize_IncludesOnlyThumbCacheDb_IgnoresIconCacheDb()
+        {
+            File.WriteAllBytes(Path.Combine(_tempDir, "thumbcache_256.db"), new byte[1024]);
+            File.WriteAllBytes(Path.Combine(_tempDir, "thumbcache_idx.db"), new byte[512]);
+            File.WriteAllBytes(Path.Combine(_tempDir, "iconcache_256.db"), new byte[4096]);
+            File.WriteAllBytes(Path.Combine(_tempDir, "iconcache_idx.db"), new byte[2048]);
+
+            long total = CacheForm.SumDbFilesSize(_tempDir, out long maxSingle);
+
+            Assert.Equal(1536L, total);
+            Assert.Equal(1024L, maxSingle);
+        }
+
+        [Fact]
+        public void RemoveLegacyIconCacheFilesFromBackup_DeletesIconCacheAndPreservesThumbCache()
+        {
+            string thumbFile = Path.Combine(_tempDir, "thumbcache_256.db");
+            string iconFile = Path.Combine(_tempDir, "iconcache_256.db");
+            File.WriteAllBytes(thumbFile, new byte[128]);
+            File.WriteAllBytes(iconFile, new byte[128]);
+
+            CacheForm.RemoveLegacyIconCacheFilesFromBackup(_tempDir);
+
+            Assert.True(File.Exists(thumbFile));
+            Assert.False(File.Exists(iconFile));
+        }
+
+        [Fact]
+        public void GetLastBackupDateTimeForFolder_IgnoresFolderWithOnlyIconCacheFiles()
+        {
+            File.WriteAllBytes(Path.Combine(_tempDir, "iconcache_256.db"), new byte[128]);
+
+            Assert.Null(CacheForm.GetLastBackupDateTimeForFolder(_tempDir));
+
+            File.WriteAllBytes(Path.Combine(_tempDir, "thumbcache_256.db"), new byte[128]);
+
+            Assert.NotNull(CacheForm.GetLastBackupDateTimeForFolder(_tempDir));
+        }
+
+        [Theory]
+        [InlineData("thumbcache_16.db", true)]
+        [InlineData("THUMBCACHE_IDX.DB", true)]
+        [InlineData("thumbcache_sr.db", true)]
+        [InlineData("iconcache_16.db", false)]
+        [InlineData("iconcache_idx.db", false)]
+        [InlineData("thumbcache_256.db.tmp", false)]
+        [InlineData("custom.db", false)]
+        public void IsThumbCacheDbFileName_MatchesOnlyThumbCacheDbFiles(string fileName, bool expected)
+        {
+            Assert.Equal(expected, CacheForm.IsThumbCacheDbFileName(fileName.AsSpan()));
+        }
+
+        [Fact]
+        public void CacheBackupLock_IsHeldByThisProcess_ReflectsLockLifecycle()
+        {
+            Assert.False(CacheBackupLock.IsHeldByThisProcess);
+
+            var result = CacheBackupLock.TryAcquire(_tempDir, out _);
+            Assert.Equal(CacheBackupLock.AcquireResult.Acquired, result);
+            Assert.True(CacheBackupLock.IsHeldByThisProcess);
+
+            CacheBackupLock.Release();
+            Assert.False(CacheBackupLock.IsHeldByThisProcess);
+        }
+
+        [Fact]
+        public async System.Threading.Tasks.Task CheckForCacheReset_WhenResetRecognizedIsTrue_ReturnsEarlyAcrossRepeatedTicks()
+        {
+            bool originalResetRecognized = Properties.Settings.Default.ResetRecognized;
+            string originalBackupPath = Properties.Settings.Default.BackupCacheFolderPath;
+            try
+            {
+                // Arrange: Create a backup folder larger than current Explorer cache so a reset would otherwise be detected
+                string fakeThumb = Path.Combine(_tempDir, "thumbcache_256.db");
+                using (var fs = new FileStream(fakeThumb, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    fs.SetLength(CacheForm.ExplorerCacheSize() + (10L * 1024 * 1024));
+                }
+
+                Properties.Settings.Default.BackupCacheFolderPath = _tempDir;
+                Properties.Settings.Default.ResetRecognized = true;
+                AboutForm.ResetCacheResetFlags();
+
+                // Act: Call CheckForCacheReset multiple times (simulating 250ms timer ticks after recognizedLogged becomes true)
+                await AboutForm.CheckForCacheReset(true, false);
+                await AboutForm.CheckForCacheReset(true, false);
+                await AboutForm.CheckForCacheReset(true, false);
+
+                // Assert: ResetRecognized remains true and no dialog blocked execution
+                Assert.True(Properties.Settings.Default.ResetRecognized);
+                Assert.False(AboutForm.IsCacheResetCheckInProgress);
+            }
+            finally
+            {
+                Properties.Settings.Default.ResetRecognized = originalResetRecognized;
+                Properties.Settings.Default.BackupCacheFolderPath = originalBackupPath;
+                Properties.Settings.Default.Save();
+                AboutForm.ResetCacheResetFlags();
+            }
+        }
+
+        [Fact]
+        public void CompareThumbsCacheSize_WhileBackupLockHeld_DoesNotClearResetRecognized()
+        {
+            bool originalResetRecognized = Properties.Settings.Default.ResetRecognized;
+            string originalBackupPath = Properties.Settings.Default.BackupCacheFolderPath;
+            try
+            {
+                // Arrange: Backup folder has 0 bytes (so ExplorerCacheSize >= BackupCacheSize is true),
+                // but CacheBackupLock is held (simulating an in-progress restore/backup).
+                Properties.Settings.Default.BackupCacheFolderPath = _tempDir;
+                Properties.Settings.Default.ResetRecognized = true;
+
+                var lockResult = CacheBackupLock.TryAcquire(_tempDir, out _);
+                Assert.Equal(CacheBackupLock.AcquireResult.Acquired, lockResult);
+
+                // Act: CompareThumbsCacheSize should see Explorer >= Backup, but must NOT clear ResetRecognized while lock is held
+                bool isLargerOrEqual = CacheForm.CompareThumbsCacheSize();
+                Assert.True(isLargerOrEqual);
+                Assert.True(Properties.Settings.Default.ResetRecognized);
+
+                // Once lock is released, CompareThumbsCacheSize clears ResetRecognized normally
+                CacheBackupLock.Release();
+                isLargerOrEqual = CacheForm.CompareThumbsCacheSize();
+                Assert.True(isLargerOrEqual);
+                Assert.False(Properties.Settings.Default.ResetRecognized);
+            }
+            finally
+            {
+                CacheBackupLock.Release();
+                Properties.Settings.Default.ResetRecognized = originalResetRecognized;
+                Properties.Settings.Default.BackupCacheFolderPath = originalBackupPath;
+                Properties.Settings.Default.Save();
+            }
+        }
     }
 }
