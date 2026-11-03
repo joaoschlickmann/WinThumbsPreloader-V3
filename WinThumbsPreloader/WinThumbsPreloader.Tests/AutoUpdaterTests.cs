@@ -290,5 +290,146 @@ namespace WinThumbsPreloader.Tests
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 AutoUpdater.DownloadInstallerAsync(directCdnUrlResult));
         }
+
+        [Fact]
+        public void PostUpdateLaunchMarker_PreservesMinimizedAndNormalStateAndExpires()
+        {
+            string markerPath = Path.Combine(_tempDir, ".post_update_launch");
+
+            AutoUpdater.WritePostUpdateLaunchMarker(restartMinimized: true, markerFilePath: markerPath);
+            Assert.True(File.Exists(markerPath));
+            Assert.True(AutoUpdater.ConsumePostUpdateLaunchMinimized(markerFilePath: markerPath));
+            Assert.False(File.Exists(markerPath));
+
+            AutoUpdater.WritePostUpdateLaunchMarker(restartMinimized: false, markerFilePath: markerPath);
+            Assert.True(File.Exists(markerPath));
+            Assert.False(AutoUpdater.ConsumePostUpdateLaunchMinimized(markerFilePath: markerPath));
+            Assert.False(File.Exists(markerPath));
+
+            AutoUpdater.WritePostUpdateLaunchMarker(restartMinimized: true, markerFilePath: markerPath);
+            DateTime expiredFuture = DateTime.UtcNow.AddMinutes(15);
+            Assert.False(AutoUpdater.ConsumePostUpdateLaunchMinimized(markerFilePath: markerPath, nowUtc: expiredFuture));
+            Assert.False(File.Exists(markerPath));
+        }
+
+        [Fact]
+        public void SettingsMigration_RestoresSettingsFromPriorVersionsInAscendingOrder()
+        {
+            string appConfigRoot = Path.Combine(_tempDir, "WinThumbsPreloader");
+            string hashDir = Path.Combine(appConfigRoot, "WinThumbsPreloader_Url_test123");
+            string v300Dir = Path.Combine(hashDir, "3.0.0.0");
+            string v310Dir = Path.Combine(hashDir, "3.1.0.0");
+            string v311Dir = Path.Combine(hashDir, "3.1.1.0");
+            Directory.CreateDirectory(v300Dir);
+            Directory.CreateDirectory(v310Dir);
+            Directory.CreateDirectory(v311Dir);
+
+            File.WriteAllText(Path.Combine(v300Dir, "user.config"), """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+                <userSettings>
+                    <WinThumbsPreloader.Properties.Settings>
+                        <setting name="ThreadCount" serializeAs="String">
+                            <value>4</value>
+                        </setting>
+                        <setting name="AutoBackupThumbs" serializeAs="String">
+                            <value>False</value>
+                        </setting>
+                    </WinThumbsPreloader.Properties.Settings>
+                </userSettings>
+            </configuration>
+            """);
+
+            File.WriteAllText(Path.Combine(v310Dir, "user.config"), """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+                <userSettings>
+                    <WinThumbsPreloader.Properties.Settings>
+                        <setting name="ThreadCount" serializeAs="String">
+                            <value>8</value>
+                        </setting>
+                        <setting name="AutoBackupThumbs" serializeAs="String">
+                            <value>True</value>
+                        </setting>
+                        <setting name="AutoRestoreThumbs" serializeAs="String">
+                            <value>True</value>
+                        </setting>
+                        <setting name="BackupCacheFolderPath" serializeAs="String">
+                            <value>C:\TestBackupFolder</value>
+                        </setting>
+                        <setting name="LoggingFrequency" serializeAs="String">
+                            <value>4</value>
+                        </setting>
+                    </WinThumbsPreloader.Properties.Settings>
+                </userSettings>
+            </configuration>
+            """);
+
+            // Version equal to currentAssemblyVersion (3.1.1.0) must not override prior version migration
+            File.WriteAllText(Path.Combine(v311Dir, "user.config"), """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+                <userSettings>
+                    <WinThumbsPreloader.Properties.Settings>
+                        <setting name="ThreadCount" serializeAs="String">
+                            <value>0</value>
+                        </setting>
+                        <setting name="LoggingFrequency" serializeAs="String">
+                            <value>0</value>
+                        </setting>
+                    </WinThumbsPreloader.Properties.Settings>
+                </userSettings>
+            </configuration>
+            """);
+
+            var settingsInstance = new WinThumbsPreloader.Properties.Settings();
+            int migratedCount = settingsInstance.MigrateFromPreviousUserConfigs(appConfigRoot, new Version(3, 1, 1, 0));
+
+            Assert.True(migratedCount >= 5);
+            Assert.Equal(8, settingsInstance.ThreadCount);
+            Assert.True(settingsInstance.AutoBackupThumbs);
+            Assert.True(settingsInstance.AutoRestoreThumbs);
+            Assert.Equal(@"C:\TestBackupFolder", settingsInstance.BackupCacheFolderPath);
+            Assert.Equal(4, settingsInstance.LoggingFrequency);
+        }
+
+        [Fact]
+        public void CacheForm_WhenTopLevelClosedByUser_CancelsCloseAndMinimizesToTray()
+        {
+            Exception? threadException = null;
+            var thread = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    using var form = new CacheForm();
+                    _ = form.Handle;
+                    form.Show();
+                    Assert.True(form.Visible);
+
+                    // Closing top-level CacheForm (Owner == null) without Shift should cancel FormClosing and hide to tray
+                    form.Close();
+
+                    Assert.False(form.IsDisposed);
+                    Assert.Equal(System.Windows.Forms.FormWindowState.Minimized, form.WindowState);
+                    Assert.False(form.ShowInTaskbar);
+                    Assert.False(form.Visible);
+
+                    // Restoring from tray brings the form back to Normal state
+                    form.RestoreFromTray();
+                    Assert.Equal(System.Windows.Forms.FormWindowState.Normal, form.WindowState);
+                    Assert.True(form.ShowInTaskbar);
+                }
+                catch (Exception ex)
+                {
+                    threadException = ex;
+                }
+            });
+            thread.SetApartmentState(System.Threading.ApartmentState.STA);
+            thread.Start();
+            thread.Join();
+
+            if (threadException != null)
+                throw threadException;
+        }
     }
 }
