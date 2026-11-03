@@ -410,3 +410,6 @@ FodyWeavers.xsd
 *.sln.iml
 /WinThumbsPreloader/.vs/WinThumbsPreloader/DesignTimeBuild/.dtbcache.v2
 /WinThumbsPreloader/.vs/WinThumbsPreloader/DesignTimeBuild/.dtbcache.v2
+
+# Graphify local output
+/graphify-out/
