@@ -4,6 +4,19 @@ All notable changes to **WinThumbsPreloader** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] - 2026-11-03
+
+### Security
+- **Fail-Closed Updater Verification (`AutoUpdater`)**: Enforced mandatory SHA-256 checksum verification (`requireSha256: true` with `CryptographicOperations.FixedTimeEquals`) before downloading and before launching the installer, restricted initial asset URLs strictly to `github.com/joaoschlickmann/WinThumbsPreloader-V3/releases/download/` while allowing GitHub CDN hosts only after HTTP redirect, and enforced TLS 1.2/1.3 with post-redirect API URI validation.
+- **System Binary Path Qualification & Argument Hardening**: Qualified Windows system executables (`cleanmgr.exe`, `explorer.exe`, `taskschd.msc`) with absolute `System32` / `Windows` paths to prevent binary planting, stripped embedded quotes and blocked leading `-` flags in scheduled task path arguments, and quoted `%V` in `Drive\shell` context menu registry entries.
+- **Defensive I/O Bounds, Log Sanitization & Rollback Isolation**: Added 1 MB file size limits, `FileAttributes.ReparsePoint` checks, and `JsonSerializerOptions { MaxDepth = 16 }` to preset loading and drag-and-drop file reads, sanitized CR/LF characters in `Logger.WriteLine` against log injection, and moved temporary cache restore rollback folders from shared `%TEMP%` to user-scoped `%LocalAppData%\WinThumbsPreloader` with random GUID suffixes.
+- **CI/CD & Supply-Chain Lockfiles**: Pinned all GitHub Actions in `.github/workflows/build-and-release.yml` to full 40-character commit SHAs with `persist-credentials: false`, committed authoritative NuGet `packages.lock.json` files with `dotnet restore --locked-mode`, and expanded `.gitignore` secret exclusions.
+
+### Fixed
+- **Task Scheduler Thread Count Parsing (`ScheduleForm`)**: Replaced raw `int.Parse` with `int.TryParse` and `Math.Clamp` when reading `-m:<threads>` from existing scheduled tasks to prevent `ArgumentOutOfRangeException` on out-of-bounds values.
+
+---
+
 ## [3.1.0] - 2026-11-03
 
 ### Added

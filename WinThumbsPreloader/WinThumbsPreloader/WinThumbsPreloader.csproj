@@ -28,9 +28,9 @@
   </PropertyGroup>
   <PropertyGroup>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <AssemblyVersion>3.1.0</AssemblyVersion>
-    <Version>3.1.0</Version>
-    <FileVersion>3.1.0</FileVersion>
+    <AssemblyVersion>3.1.1</AssemblyVersion>
+    <Version>3.1.1</Version>
+    <FileVersion>3.1.1</FileVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
     <Nullable>warnings</Nullable>
