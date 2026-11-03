@@ -12,7 +12,7 @@ namespace WinThumbsPreloader.Properties {
     
     
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "17.5.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "18.8.0.0")]
     internal sealed partial class Settings : global::System.Configuration.ApplicationSettingsBase {
         
         private static Settings defaultInstance = ((Settings)(global::System.Configuration.ApplicationSettingsBase.Synchronized(new Settings())));
@@ -20,6 +20,523 @@ namespace WinThumbsPreloader.Properties {
         public static Settings Default {
             get {
                 return defaultInstance;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool Multithreaded {
+            get {
+                return ((bool)(this["Multithreaded"]));
+            }
+            set {
+                this["Multithreaded"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool Admin {
+            get {
+                return ((bool)(this["Admin"]));
+            }
+            set {
+                this["Admin"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0")]
+        public int ThreadCount {
+            get {
+                return ((int)(this["ThreadCount"]));
+            }
+            set {
+                this["ThreadCount"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("ai, avi, avif, bmp, gif, heic, heif, jpg, jpeg, mkv, mov, mp4, png, psb, psd, svg, tif, tiff, w" +
+            "ebp")]
+        public string ExtensionsText {
+            get {
+                return ((string)(this["ExtensionsText"]));
+            }
+            set {
+                this["ExtensionsText"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool PreloadFolderIcons {
+            get {
+                return ((bool)(this["PreloadFolderIcons"]));
+            }
+            set {
+                this["PreloadFolderIcons"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool AutoBackupThumbs {
+            get {
+                return ((bool)(this["AutoBackupThumbs"]));
+            }
+            set {
+                this["AutoBackupThumbs"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ResetRecognized {
+            get {
+                return ((bool)(this["ResetRecognized"]));
+            }
+            set {
+                this["ResetRecognized"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ThumbsResetAlert {
+            get {
+                return ((bool)(this["ThumbsResetAlert"]));
+            }
+            set {
+                this["ThumbsResetAlert"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool AutoRestoreThumbs {
+            get {
+                return ((bool)(this["AutoRestoreThumbs"]));
+            }
+            set {
+                this["AutoRestoreThumbs"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool StartWithWindows {
+            get {
+                return ((bool)(this["StartWithWindows"]));
+            }
+            set {
+                this["StartWithWindows"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool DriveSelectionEnabled {
+            get {
+                return ((bool)(this["DriveSelectionEnabled"]));
+            }
+            set {
+                this["DriveSelectionEnabled"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Vertical")]
+        public string DriveSortChoice {
+            get {
+                return ((string)(this["DriveSortChoice"]));
+            }
+            set {
+                this["DriveSortChoice"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool TwentyFourHourMode {
+            get {
+                return ((bool)(this["TwentyFourHourMode"]));
+            }
+            set {
+                this["TwentyFourHourMode"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool DetailedTimeMode {
+            get {
+                return ((bool)(this["DetailedTimeMode"]));
+            }
+            set {
+                this["DetailedTimeMode"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("250")]
+        public int CacheUpdateInterval {
+            get {
+                return ((int)(this["CacheUpdateInterval"]));
+            }
+            set {
+                this["CacheUpdateInterval"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("5000")]
+        public int AutoBackupInterval {
+            get {
+                return ((int)(this["AutoBackupInterval"]));
+            }
+            set {
+                this["AutoBackupInterval"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("5000")]
+        public int AutoRestoreInterval {
+            get {
+                return ((int)(this["AutoRestoreInterval"]));
+            }
+            set {
+                this["AutoRestoreInterval"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("MB")]
+        public string CacheSizeFormat {
+            get {
+                return ((string)(this["CacheSizeFormat"]));
+            }
+            set {
+                this["CacheSizeFormat"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Manual Deletion")]
+        public string ExplorerCacheDeletionMethod {
+            get {
+                return ((string)(this["ExplorerCacheDeletionMethod"]));
+            }
+            set {
+                this["ExplorerCacheDeletionMethod"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool PreloadAllFolders {
+            get {
+                return ((bool)(this["PreloadAllFolders"]));
+            }
+            set {
+                this["PreloadAllFolders"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Disabled")]
+        public string ExtensionsAutoFormatting {
+            get {
+                return ((string)(this["ExtensionsAutoFormatting"]));
+            }
+            set {
+                this["ExtensionsAutoFormatting"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("96,256")]
+        public string PreloaderThumbnailSizes {
+            get {
+                return ((string)(this["PreloaderThumbnailSizes"]));
+            }
+            set {
+                this["PreloaderThumbnailSizes"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("On Every File")]
+        public string ExplorerCloseFrequency {
+            get {
+                return ((string)(this["ExplorerCloseFrequency"]));
+            }
+            set {
+                this["ExplorerCloseFrequency"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0")]
+        public int LoggingFrequency {
+            get {
+                return ((int)(this["LoggingFrequency"]));
+            }
+            set {
+                this["LoggingFrequency"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Allow Partial Copy")]
+        public string BackupRestoreClearSafety {
+            get {
+                return ((string)(this["BackupRestoreClearSafety"]));
+            }
+            set {
+                this["BackupRestoreClearSafety"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool WaitAfterPreloading {
+            get {
+                return ((bool)(this["WaitAfterPreloading"]));
+            }
+            set {
+                this["WaitAfterPreloading"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("10")]
+        public int WaitTimeAfterPreloading {
+            get {
+                return ((int)(this["WaitTimeAfterPreloading"]));
+            }
+            set {
+                this["WaitTimeAfterPreloading"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("250")]
+        public int ProgressDialogUpdateSpeed {
+            get {
+                return ((int)(this["ProgressDialogUpdateSpeed"]));
+            }
+            set {
+                this["ProgressDialogUpdateSpeed"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool WaitAfterCacheBackup {
+            get {
+                return ((bool)(this["WaitAfterCacheBackup"]));
+            }
+            set {
+                this["WaitAfterCacheBackup"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("10")]
+        public int WaitTimeAfterCacheBackup {
+            get {
+                return ((int)(this["WaitTimeAfterCacheBackup"]));
+            }
+            set {
+                this["WaitTimeAfterCacheBackup"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Seconds")]
+        public string WaitAfterPreloadingUnit {
+            get {
+                return ((string)(this["WaitAfterPreloadingUnit"]));
+            }
+            set {
+                this["WaitAfterPreloadingUnit"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Seconds")]
+        public string WaitAfterCacheUnit {
+            get {
+                return ((string)(this["WaitAfterCacheUnit"]));
+            }
+            set {
+                this["WaitAfterCacheUnit"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Below Normal")]
+        public string PreloaderProcessPriority {
+            get {
+                return ((string)(this["PreloaderProcessPriority"]));
+            }
+            set {
+                this["PreloaderProcessPriority"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool DonePathScrollEnabled {
+            get {
+                return ((bool)(this["DonePathScrollEnabled"]));
+            }
+            set {
+                this["DonePathScrollEnabled"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("End")]
+        public string DonePathShortenMode {
+            get {
+                return ((string)(this["DonePathShortenMode"]));
+            }
+            set {
+                this["DonePathShortenMode"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("54")]
+        public int DonePathVisibleChars {
+            get {
+                return ((int)(this["DonePathVisibleChars"]));
+            }
+            set {
+                this["DonePathVisibleChars"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string BackupCacheFolderPath {
+            get {
+                return ((string)(this["BackupCacheFolderPath"]));
+            }
+            set {
+                this["BackupCacheFolderPath"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastBackupDateTime {
+            get {
+                return ((string)(this["LastBackupDateTime"]));
+            }
+            set {
+                this["LastBackupDateTime"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LoggerFolderPath {
+            get {
+                return ((string)(this["LoggerFolderPath"]));
+            }
+            set {
+                this["LoggerFolderPath"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool AutoDeleteLogsByAge {
+            get {
+                return ((bool)(this["AutoDeleteLogsByAge"]));
+            }
+            set {
+                this["AutoDeleteLogsByAge"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("30")]
+        public int LogRetentionDays {
+            get {
+                return ((int)(this["LogRetentionDays"]));
+            }
+            set {
+                this["LogRetentionDays"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("1024")]
+        public int MaxLogFileSizeMB {
+            get {
+                return ((int)(this["MaxLogFileSizeMB"]));
+            }
+            set {
+                this["MaxLogFileSizeMB"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool AutoBackupAfterPreload {
+            get {
+                return ((bool)(this["AutoBackupAfterPreload"]));
+            }
+            set {
+                this["AutoBackupAfterPreload"] = value;
             }
         }
     }

@@ -79,6 +79,15 @@ namespace WinThumbsPreloader.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to A newer beta version of WinThumbsPreloader is available.
+        /// </summary>
+        internal static string AboutForm_WinThumbsPreloader_BetaVersionAvailable
+        {
+            get {
+                return ResourceManager.GetString("AboutForm_WinThumbsPreloader_BetaVersionAvailable", resourceCulture);
+            }
+        }
+        /// <summary>
         ///   Looks up a localized string similar to Update check failed.
         /// </summary>
         internal static string AboutForm_WinThumbsPreloader_UpdateCheckFailed {
@@ -166,6 +175,23 @@ namespace WinThumbsPreloader.Properties {
         internal static string ThumbnailsPreloader_Processing {
             get {
                 return ResourceManager.GetString("ThumbnailsPreloader_Processing", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to WinThumbsPreloader.
+        /// </summary>
+        internal static string ThumbnailsPreloader_Title {
+            get {
+                return ResourceManager.GetString("ThumbnailsPreloader_Title", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Backing up thumbnail cache....
+        /// </summary>
+        internal static string ThumbnailsPreloader_BackingUpThumbsCache {
+            get {
+                return ResourceManager.GetString("ThumbnailsPreloader_BackingUpThumbsCache", resourceCulture);
             }
         }
     }

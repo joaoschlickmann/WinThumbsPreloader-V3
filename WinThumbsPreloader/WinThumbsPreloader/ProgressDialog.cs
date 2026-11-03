@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -35,7 +35,7 @@ namespace WinThumbsPreloader
         /// <summary>
         /// Gets or sets whether the progress dialog is automatically closed when the Value property equals or exceeds the value of Maximum.
         /// </summary>
-        [DefaultValue(true), Category("Behaviour"), Description("whether the progress dialog is automatically closed when the Value property equals or exceeds the value of Maximum.")]
+        [DefaultValue(false), Category("Behaviour"), Description("whether the progress dialog is automatically closed when the Value property equals or exceeds the value of Maximum.")]
         public bool AutoClose
         {
             get
@@ -108,8 +108,8 @@ namespace WinThumbsPreloader
                 if (diff && (_nativeProgressDialog != null))
                 {
                     _nativeProgressDialog.SetLine(1, _line1, _compactPaths, IntPtr.Zero);
-                    _nativeProgressDialog.SetLine(2, _line1, _compactPaths, IntPtr.Zero);
-                    _nativeProgressDialog.SetLine(3, _line1, _compactPaths, IntPtr.Zero);
+                    _nativeProgressDialog.SetLine(2, _line2, _compactPaths, IntPtr.Zero);
+                    _nativeProgressDialog.SetLine(3, _line3, _compactPaths, IntPtr.Zero);
                 }
             }
         }
@@ -125,10 +125,9 @@ namespace WinThumbsPreloader
             }
             set
             {
-                if (_state == ProgressDialogState.Stopped)
-                    throw new InvalidOperationException("Timer is not running.");
-                else if (_nativeProgressDialog != null)
-                    _nativeProgressDialog.SetLine(1, _line1 = value, _compactPaths, IntPtr.Zero);
+                _line1 = value;
+                if (_state != ProgressDialogState.Stopped && _nativeProgressDialog != null)
+                    _nativeProgressDialog.SetLine(1, _line1, _compactPaths, IntPtr.Zero);
             }
         }
         /// <summary>
@@ -143,10 +142,9 @@ namespace WinThumbsPreloader
             }
             set
             {
-                if (_state == ProgressDialogState.Stopped)
-                    throw new InvalidOperationException("Timer is not running.");
-                else if (_nativeProgressDialog != null)
-                    _nativeProgressDialog.SetLine(2, _line2 = value, _compactPaths, IntPtr.Zero);
+                _line2 = value;
+                if (_state != ProgressDialogState.Stopped && _nativeProgressDialog != null)
+                    _nativeProgressDialog.SetLine(2, _line2, _compactPaths, IntPtr.Zero);
             }
         }
         /// <summary>
@@ -161,14 +159,13 @@ namespace WinThumbsPreloader
             }
             set
             {
-                if (_state == ProgressDialogState.Stopped)
-                    throw new InvalidOperationException("Timer is not running.");
-                else if (_nativeProgressDialog != null)
+                _line3 = value;
+                if (_state != ProgressDialogState.Stopped && _nativeProgressDialog != null)
                 {
                     if (ShowTimeRemaining)
                         throw new InvalidOperationException("Line3 cannot be set if ShowTimeRemaining is set to true.");
                     else
-                        _nativeProgressDialog.SetLine(3, _line3 = value, _compactPaths, IntPtr.Zero);
+                        _nativeProgressDialog.SetLine(3, _line3, _compactPaths, IntPtr.Zero);
                 }
             }
         }
@@ -184,8 +181,10 @@ namespace WinThumbsPreloader
             }
             set
             {
+                if (_maximum == value)
+                    return;
                 _maximum = value;
-                if (_state != ProgressDialogState.Stopped) UpdateProgress();
+                if (_state != ProgressDialogState.Stopped && _value > 0) UpdateProgress();
             }
         }
         /// <summary>
@@ -206,6 +205,20 @@ namespace WinThumbsPreloader
                     UpdateProgress();
                     if (_autoClose && (_value >= _maximum)) Close();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Atomically updates both completed value and maximum in a single native IProgressDialog::SetProgress call.
+        /// </summary>
+        public void SetProgress(int value, int maximum)
+        {
+            _value = value;
+            _maximum = maximum;
+            if (_state != ProgressDialogState.Stopped)
+            {
+                UpdateProgress();
+                if (_autoClose && (_value >= _maximum)) Close();
             }
         }
         /// <summary>
@@ -299,14 +312,9 @@ namespace WinThumbsPreloader
             set
             {
                 if (value)
-                {
                     _flags &= ~PROGDLG.NoCancel;
-                }
                 else
-                {
-                    if (Environment.OSVersion.Version.Major < 6) throw new NotSupportedException("This option is only available on Windows Vista or greater.");
                     _flags |= PROGDLG.NoCancel;
-                }
             }
         }
         /// <summary>
@@ -323,14 +331,13 @@ namespace WinThumbsPreloader
             {
                 if (value)
                 {
-                    if (Environment.OSVersion.Version.Major < 6) throw new NotSupportedException("This option is only available on Windows Vista or greater.");
                     _flags |= PROGDLG.MarqueeProgress;
                 }
                 else
                 {
                     _flags &= ~PROGDLG.MarqueeProgress;
                 }
-                if (_state != ProgressDialogState.Stopped)
+                if (_state != ProgressDialogState.Stopped && _progressBarHandler != IntPtr.Zero)
                 {
                     int style = (int)GetWindowLongPtr(_progressBarHandler, GWL.GWL_STYLE);
                     if (value)
@@ -342,7 +349,7 @@ namespace WinThumbsPreloader
                         style &= ~(int)PBS.PBS_MARQUEE;
                     }
                     SetWindowLongPtr(_progressBarHandler, GWL.GWL_STYLE, (IntPtr)style);
-                    SendMessage(_progressBarHandler, 0x40A, value ? 1 : 0, 0);
+                    SendMessage(_progressBarHandler, (int)PBM.PBM_SETMARQUEE, value ? 1 : 0, 0);
                 }
             }
         }
@@ -369,7 +376,7 @@ namespace WinThumbsPreloader
             _progressDialogType = Type.GetTypeFromCLSID(new Guid(CLSID_ProgressDialog));
 
             // default/initial values
-            _autoClose = true;
+            _autoClose = false;
             _state = ProgressDialogState.Stopped;
             _maximum = 100;
             _line1 = _line2 = _line3 = String.Empty;
@@ -393,7 +400,7 @@ namespace WinThumbsPreloader
         /// </summary>
         private void UpdateProgress()
         {
-            _nativeProgressDialog.SetProgress((uint)_value, (uint)_maximum);
+            _nativeProgressDialog?.SetProgress((uint)_value, (uint)_maximum);
         }
 
         /// <summary>
@@ -415,26 +422,27 @@ namespace WinThumbsPreloader
             if (parent == null) parent = Form.ActiveForm;
             IntPtr handle = (parent == null) ? IntPtr.Zero : parent.Handle;
 
-            _nativeProgressDialog = (IProgressDialog)Activator.CreateInstance(_progressDialogType);
-            _nativeProgressDialog.SetCancelMsg(_cancelMessage, null);
+            _nativeProgressDialog = (IProgressDialog)Activator.CreateInstance(_progressDialogType)!;
+            _nativeProgressDialog!.SetCancelMsg(_cancelMessage, null);
             if (ShowTimeRemaining) _nativeProgressDialog.SetLine(3, "Estimating time remaining...", false, IntPtr.Zero);
-            //Temporary title for progressbar handler detection
+            // Temporary title for progressbar handler detection
             string guidTitle = Guid.NewGuid().ToString();
             _nativeProgressDialog.SetTitle(guidTitle);
             _nativeProgressDialog.StartProgressDialog(handle, null, _flags, IntPtr.Zero);
-            //Workaround to manipulate progressbar style
+            // Workaround to manipulate progressbar style
             IntPtr handler = IntPtr.Zero;
-            while (true)
+            for (int attempt = 0; attempt < 600; attempt++) // Timeout after 15 seconds
             {
                 handler = FindWindow(null, guidTitle);
-                if (handler == IntPtr.Zero) Thread.Sleep(25); else break;
+                if (handler != IntPtr.Zero) break;
+                Thread.Sleep(25);
             }
             handler = FindWindowEx(handler, IntPtr.Zero, "DirectUIHWND", null);
             IntPtr childHandler = FindWindowEx(handler, IntPtr.Zero, "CtrlNotifySink", null);
             childHandler = FindWindowEx(handler, childHandler, "CtrlNotifySink", null);
             childHandler = FindWindowEx(handler, childHandler, "CtrlNotifySink", null);
             _progressBarHandler = FindWindowEx(childHandler, IntPtr.Zero, "msctls_progress32", null);
-            //Real title
+            // Real title
             _nativeProgressDialog.SetTitle(_title);
             _value = 0;
             _state = ProgressDialogState.Running;
@@ -469,16 +477,6 @@ namespace WinThumbsPreloader
         /// </summary>
         public void Close()
         {
-            if (_state != ProgressDialogState.Stopped)
-            {
-                try
-                {
-                    _nativeProgressDialog.StopProgressDialog();
-                }
-                catch { }
-                _state = ProgressDialogState.Stopped;
-            }
-
             CleanUp();
         }
 

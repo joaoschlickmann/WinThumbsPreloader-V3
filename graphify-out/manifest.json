@@ -1,0 +1,278 @@
+{
+  "WinThumbsPreloader/WinThumbsPreloader.sln": {
+    "mtime": 1793275637.345559,
+    "seen": 1793276950.8161445,
+    "ast_hash": "c208ac814870eaa4d81bcb4b7ba57d38",
+    "semantic_hash": "c208ac814870eaa4d81bcb4b7ba57d38"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/DirectoryScanner.cs": {
+    "mtime": 1793286302.1135242,
+    "seen": 1793292061.6216075,
+    "ast_hash": "bbd5acd060f5cf038bdd1eaa0bd1484a",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/AboutForm.Designer.cs": {
+    "mtime": 1793272848.607699,
+    "seen": 1793276950.8161464,
+    "ast_hash": "d364ee7fbdfccf64f7d196e8ad055740",
+    "semantic_hash": "d364ee7fbdfccf64f7d196e8ad055740"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/AboutForm.cs": {
+    "mtime": 1793281398.1306384,
+    "seen": 1793283422.4341197,
+    "ast_hash": "7bf5066417b2862282b66b72a481127f",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/AdvancedCacheForm.Designer.cs": {
+    "mtime": 1793272848.609221,
+    "seen": 1793276950.8161483,
+    "ast_hash": "8266fe99c2bb2f928d3d757960310f4f",
+    "semantic_hash": "8266fe99c2bb2f928d3d757960310f4f"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/AdvancedCacheForm.cs": {
+    "mtime": 1793275345.3253143,
+    "seen": 1793276950.816149,
+    "ast_hash": "fc5ba18ebae77874bef485710cfaa27f",
+    "semantic_hash": "fc5ba18ebae77874bef485710cfaa27f"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/AdvancedScheduleForm.Designer.cs": {
+    "mtime": 1793272848.610217,
+    "seen": 1793276950.81615,
+    "ast_hash": "38f36f05922c9b82312536256e16d2d6",
+    "semantic_hash": "38f36f05922c9b82312536256e16d2d6"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/AdvancedScheduleForm.cs": {
+    "mtime": 1793274419.388283,
+    "seen": 1793276950.8161511,
+    "ast_hash": "60cabfab3a2c85363dce695928eedf4d",
+    "semantic_hash": "60cabfab3a2c85363dce695928eedf4d"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/AdvancedSettingsForm.Designer.cs": {
+    "mtime": 1793274424.0493302,
+    "seen": 1793276950.8161519,
+    "ast_hash": "3519554e7e90e44406e4a9c2e2949f7a",
+    "semantic_hash": "3519554e7e90e44406e4a9c2e2949f7a"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/AdvancedSettingsForm.cs": {
+    "mtime": 1793275343.852882,
+    "seen": 1793276950.8161526,
+    "ast_hash": "c0b00eee9840fff56e63c776b3ebda3e",
+    "semantic_hash": "c0b00eee9840fff56e63c776b3ebda3e"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/BulkPreloaderForm.Designer.cs": {
+    "mtime": 1793273890.0625782,
+    "seen": 1793276950.8161535,
+    "ast_hash": "437b370f4365ae5fbbfa929e20309135",
+    "semantic_hash": "437b370f4365ae5fbbfa929e20309135"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/BulkPreloaderForm.cs": {
+    "mtime": 1793275232.9073088,
+    "seen": 1793276950.8161545,
+    "ast_hash": "0f26063d9059677853d7e73461258ef5",
+    "semantic_hash": "0f26063d9059677853d7e73461258ef5"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/CacheForm.Designer.cs": {
+    "mtime": 1793272848.6132152,
+    "seen": 1793276950.8161554,
+    "ast_hash": "f9ee3e6e2ff3f0bd673ce6cbdcdabe10",
+    "semantic_hash": "f9ee3e6e2ff3f0bd673ce6cbdcdabe10"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/CacheForm.cs": {
+    "mtime": 1793297673.0732164,
+    "seen": 1793297780.0614116,
+    "ast_hash": "dd6f9a8016921c66a161351b6a5cb355",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/LicenseForm.Designer.cs": {
+    "mtime": 1793272848.6152163,
+    "seen": 1793276950.8161569,
+    "ast_hash": "8d139d8d4d0bbc2883df43f9f81ad0a9",
+    "semantic_hash": "8d139d8d4d0bbc2883df43f9f81ad0a9"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/LicenseForm.cs": {
+    "mtime": 1793272848.6152163,
+    "seen": 1793276950.8161576,
+    "ast_hash": "fdec33464177f16c4da477fd6d6bac03",
+    "semantic_hash": "fdec33464177f16c4da477fd6d6bac03"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/ScheduleForm.Designer.cs": {
+    "mtime": 1793272848.6162176,
+    "seen": 1793276950.8161588,
+    "ast_hash": "849c0ac3b184b3961c79ee80d61a585c",
+    "semantic_hash": "849c0ac3b184b3961c79ee80d61a585c"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/ScheduleForm.cs": {
+    "mtime": 1793275314.9489517,
+    "seen": 1793276950.8161595,
+    "ast_hash": "cde1d4e5fff269fe2522b2ef0cb0f201",
+    "semantic_hash": "cde1d4e5fff269fe2522b2ef0cb0f201"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/SettingsForm.Designer.cs": {
+    "mtime": 1793272848.6172178,
+    "seen": 1793276950.8161604,
+    "ast_hash": "2c69fac01f9d915e8d2998ac44e947c6",
+    "semantic_hash": "2c69fac01f9d915e8d2998ac44e947c6"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Forms/SettingsForm.cs": {
+    "mtime": 1793282629.6405776,
+    "seen": 1793283422.4341645,
+    "ast_hash": "45587655fcc68a44f4b8701407e8b8f7",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Logger.cs": {
+    "mtime": 1793272848.618219,
+    "seen": 1793276950.8161623,
+    "ast_hash": "5f440617f0da654aa325f063e2f5e0ca",
+    "semantic_hash": "5f440617f0da654aa325f063e2f5e0ca"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/NetworkPathResolver.cs": {
+    "mtime": 1793275795.8536773,
+    "seen": 1793276950.816163,
+    "ast_hash": "c94a58f20ad95891ccda88ed76f62668",
+    "semantic_hash": "c94a58f20ad95891ccda88ed76f62668"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Options.cs": {
+    "mtime": 1793273579.3660948,
+    "seen": 1793276950.816164,
+    "ast_hash": "f811f3eec66fc864fae1013b14ad7e5c",
+    "semantic_hash": "f811f3eec66fc864fae1013b14ad7e5c"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Program.cs": {
+    "mtime": 1793295843.238764,
+    "seen": 1793296009.728847,
+    "ast_hash": "3848b1cc51f37862f907cf2707dd4987",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/ProgressDialog.cs": {
+    "mtime": 1793281134.165653,
+    "seen": 1793283422.434178,
+    "ast_hash": "0fea47d7069cd060ef6b3990022a1000",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Properties/AssemblyInfo.cs": {
+    "mtime": 1793275633.2892556,
+    "seen": 1793276950.8161664,
+    "ast_hash": "c812800ed1bb42cae5b2cdfcb204cb5e",
+    "semantic_hash": "c812800ed1bb42cae5b2cdfcb204cb5e"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Properties/Resources.Designer.cs": {
+    "mtime": 1793272848.6197336,
+    "seen": 1793276950.8161676,
+    "ast_hash": "dab847b48d07d5a8a094635c06b487f6",
+    "semantic_hash": "dab847b48d07d5a8a094635c06b487f6"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Properties/Settings.Designer.cs": {
+    "mtime": 1793297692.0981565,
+    "seen": 1793297780.0614262,
+    "ast_hash": "1e3670c22b4d48c8cee850f1aa17bc01",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Properties/launchSettings.json": {
+    "mtime": 1793272848.6207314,
+    "seen": 1793276950.8161695,
+    "ast_hash": "aeae9482546af9580a08cfb5da427fcf",
+    "semantic_hash": "aeae9482546af9580a08cfb5da427fcf"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/Settings.cs": {
+    "mtime": 1793272848.6207314,
+    "seen": 1793276950.8161705,
+    "ast_hash": "2dbf60c86a8d739c7f4726295a0f7b53",
+    "semantic_hash": "2dbf60c86a8d739c7f4726295a0f7b53"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/ThumbnailPreloader.cs": {
+    "mtime": 1793296562.8607054,
+    "seen": 1793296647.3509989,
+    "ast_hash": "f670700f051c8dfb4b7478732b0ffd38",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/ThumbnailsPreloader.cs": {
+    "mtime": 1793297262.5030417,
+    "seen": 1793297425.0253296,
+    "ast_hash": "1f77e9f2e2bf880d3f0a97c50582d64b",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/WinThumbsPreloader.csproj": {
+    "mtime": 1793276989.5036016,
+    "seen": 1793283422.4342008,
+    "ast_hash": "2aacb3d87e9c4b1c6d9aa6a27931739f",
+    "semantic_hash": ""
+  },
+  "InnoSetup/License.txt": {
+    "mtime": 1793272848.6016982,
+    "seen": 1793276950.816174,
+    "ast_hash": "0398a8c1be86d058dc913cd6bbdd7772",
+    "semantic_hash": "0398a8c1be86d058dc913cd6bbdd7772"
+  },
+  "README.md": {
+    "mtime": 1793272848.602696,
+    "seen": 1793276950.8161752,
+    "ast_hash": "a0459792b9c6a4075be7bc1ed18441b1",
+    "semantic_hash": "a0459792b9c6a4075be7bc1ed18441b1"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader/LICENSE.txt": {
+    "mtime": 1793272848.618219,
+    "seen": 1793276950.8161762,
+    "ast_hash": "f5fd0cb2a480bc088c6a5367ef86e853",
+    "semantic_hash": "f5fd0cb2a480bc088c6a5367ef86e853"
+  },
+  "demo.gif": {
+    "mtime": 1793272809.967567,
+    "seen": 1793276950.816177,
+    "ast_hash": "f4f8a8a7900396d48706b602d9aab9fa",
+    "semantic_hash": "f4f8a8a7900396d48706b602d9aab9fa"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader.Tests/BulkPresetTests.cs": {
+    "mtime": 1793275701.0902464,
+    "seen": 1793276950.816128,
+    "ast_hash": "9aaa494ed06a01378ef65ea540fc4d7f",
+    "semantic_hash": "9aaa494ed06a01378ef65ea540fc4d7f"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader.Tests/CacheBackupAndLockTests.cs": {
+    "mtime": 1793275815.4390728,
+    "seen": 1793276950.8161337,
+    "ast_hash": "3a4dccdeefb99f861d77c621cb6766cb",
+    "semantic_hash": "3a4dccdeefb99f861d77c621cb6766cb"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader.Tests/DirectoryScannerTests.cs": {
+    "mtime": 1793275761.8107202,
+    "seen": 1793276950.816136,
+    "ast_hash": "334a7182e3c7930682e6a3e6376205fb",
+    "semantic_hash": "334a7182e3c7930682e6a3e6376205fb"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader.Tests/LoggerTests.cs": {
+    "mtime": 1793275797.314952,
+    "seen": 1793276950.8161376,
+    "ast_hash": "cc1c4a07c28f58fb703ad883dd1fc61b",
+    "semantic_hash": "cc1c4a07c28f58fb703ad883dd1fc61b"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader.Tests/NetworkPathResolverTests.cs": {
+    "mtime": 1793275697.5544424,
+    "seen": 1793276950.8161385,
+    "ast_hash": "53cc6a17e522581df65efa098f6e3fb9",
+    "semantic_hash": "53cc6a17e522581df65efa098f6e3fb9"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader.Tests/OptionsTests.cs": {
+    "mtime": 1793275695.8345551,
+    "seen": 1793276950.8161397,
+    "ast_hash": "c5e152e4437692b54dc20ea07e5d441a",
+    "semantic_hash": "c5e152e4437692b54dc20ea07e5d441a"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader.Tests/PathFormattingTests.cs": {
+    "mtime": 1793275699.2445116,
+    "seen": 1793276950.8161418,
+    "ast_hash": "b45a52113803d3b16fc1ca789ef7385e",
+    "semantic_hash": "b45a52113803d3b16fc1ca789ef7385e"
+  },
+  "WinThumbsPreloader/WinThumbsPreloader.Tests/PreloaderPipelineIntegrationTests.cs": {
+    "mtime": 1793297749.353506,
+    "seen": 1793297780.0613935,
+    "ast_hash": "2c8a0bd317ac0c9a1d85ca6873093ecb",
+    "semantic_hash": ""
+  },
+  "WinThumbsPreloader/WinThumbsPreloader.Tests/WinThumbsPreloader.Tests.csproj": {
+    "mtime": 1793275635.1382575,
+    "seen": 1793276950.8161435,
+    "ast_hash": "62047674d9e719161d9afb9463fa527f",
+    "semantic_hash": "62047674d9e719161d9afb9463fa527f"
+  }
+}

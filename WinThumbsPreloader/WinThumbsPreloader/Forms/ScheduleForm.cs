@@ -1,0 +1,941 @@
+using Microsoft.Win32.TaskScheduler;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Globalization;
+using System.Linq;
+using System.Runtime.Versioning;
+using System.Text.RegularExpressions;
+using System.Windows.Forms;
+using WinThumbsPreloader.Forms;
+using WinThumbsPreloader.Properties;
+using static WinThumbsPreloader.Logger;
+using Point = System.Drawing.Point;
+using Task = System.Threading.Tasks.Task;
+using TaskScheduler = Microsoft.Win32.TaskScheduler.Task;
+using Trigger = Microsoft.Win32.TaskScheduler.Trigger;
+using TriggerCollection = Microsoft.Win32.TaskScheduler.TriggerCollection;
+
+namespace WinThumbsPreloader
+{
+    [SupportedOSPlatform("windows")]
+    public partial class ScheduleForm : Form //TODO: add a statistics form to show the speed of the preloader along with other things
+    {
+        public const string TaskName = "WinThumbsPreloaderTask";
+
+        public ScheduleForm()
+        {
+            InitializeComponent();
+            this.KeyDown += ScheduleForm_KeyDown;
+            this.KeyUp += ScheduleForm_KeyUp;
+            this.Activated += ScheduleForm_Activated;
+            this.KeyPreview = true;
+            this.FormClosing += ScheduleForm_FormClosing;
+        }
+
+        private void ScheduleForm_Load(object sender, EventArgs e)
+        {
+            bool enableDrivePaths = Settings.Default.DriveSelectionEnabled;
+            this.Icon = Resources.MainIcon;
+            ToggleDriveVisibility(enableDrivePaths);
+            ChangeDriveLetterSortingOrder();
+            Set24HourMode();
+            SetDetailedTimeMode();
+            LoadTaskDetails();
+        }
+
+        private void CloseButton_Click(object sender, EventArgs e)
+        {
+            if (CloseButton.Text == "Close")
+            {
+                WriteLine("Closing Schedule Form", LoggingFrequency.GUILogging);
+                Close();
+            }
+            else if (CloseButton.Text == "Exit")
+            {
+                WriteLine("Exiting application from schedule form", LoggingFrequency.GUILogging);
+                Environment.Exit(0);
+            }
+        }
+        private void ScheduleForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing && (Control.ModifierKeys & Keys.Shift) == Keys.Shift)
+            {
+                WriteLine("Exiting application from schedule form", LoggingFrequency.GUILogging);
+                Environment.Exit(0); // Exit the entire application
+            }
+        }
+
+        private void ScheduleForm_Activated(object sender, EventArgs e)
+        {
+            if (Control.ModifierKeys == Keys.Shift)
+            {
+                // Shift key is currently pressed, so change the button text
+                CloseButton.Text = "Exit";
+                ScheduleSaveButton.Text = "Delete Task";
+            }
+            else
+            {
+                // Shift key is not pressed, so set the button text to its original value
+                CloseButton.Text = "Close";
+                ScheduleSaveButton.Text = "Save Task";
+            }
+        }
+
+        private void ScheduleForm_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.ShiftKey)
+            {
+                // Change the button text when Shift is pressed
+                CloseButton.Text = "Exit";
+                ScheduleSaveButton.Text = "Delete Task";
+            }
+        }
+
+        private void ScheduleForm_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.ShiftKey)
+            {
+                // Change the button text back when Shift is released
+                CloseButton.Text = "Close";
+                ScheduleSaveButton.Text = "Save Task";
+            }
+        }
+
+        private void MultithreadedCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            //Toggles the -m argument in the scheduler command
+            ThreadsNumericUpDown.Enabled = MultithreadedCheckBox.Checked;
+        }
+
+        private void ThreadsNumericUpDown_ValueChanged(object sender, EventArgs e)
+        {
+            //Counts how many threads to use for the -m argument such as "-m:4" or "-m4"
+        }
+
+        private void RunEveryComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            //Drop Down menu which inputs whether to run every day, week, or month in the task scheduler
+        }
+
+        private void OnIdleCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            //Toggles whether to run on idle in the task scheduler
+        }
+
+        private void ScheduleSaveButton_Click(object sender, EventArgs e)
+        {
+            if (ScheduleSaveButton.Text == "Save Task")
+            {
+                SaveTask();
+            }
+            else if (ScheduleSaveButton.Text == "Delete Task")
+            {
+                DialogResult result = MessageBox.Show("Are you sure you want to delete the scheduled task?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (result == DialogResult.Yes)
+                {
+                    DeleteTask();
+                }
+                else
+                {
+                    WriteLine("Task deletion canceled by user", LoggingFrequency.GUILogging);
+                    OutputTextBox.Text = "Task deletion canceled.";
+                }
+            }
+        }
+
+        private void DrivesCheckedListBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            //A box of all 26 Drive letters to pass as paths to the program if they're checked
+            this.DrivesCheckedListBox.CheckOnClick = true;
+        }
+
+        private bool _loadingTaskDetails = false;
+
+        private void EnabledCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            if (_loadingTaskDetails)
+                return;
+
+            try
+            {
+                using (TaskService ts = new TaskService())
+                {
+                    TaskScheduler task = ts.FindTask(TaskName);
+                    if (task != null)
+                        task.Enabled = EnabledCheckBox.Checked;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLine("Failed to update scheduled task enabled state: " + ex.Message, LoggingFrequency.GUILogging);
+            }
+        }
+
+        private void TimeDigitsComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            //Sets time ranges from 1:00 to 12:00
+        }
+
+        private void TimeOfDayComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            //Sets whether the time is AM or PM
+        }
+
+        private void AdvancedButton_Click(object sender, EventArgs e)
+        {
+            WriteLine("Opening Advanced Schedule Form", LoggingFrequency.GUILogging);
+            AdvancedScheduleForm advancedScheduleForm = new AdvancedScheduleForm();
+            this.OpenSecondaryFormCentered(advancedScheduleForm);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        private const int SW_MAXIMIZE = 3;
+
+        public void OpenTaskSchedulerButton_Click(object sender, EventArgs e)
+        {
+            WriteLine("Opening Task Scheduler", LoggingFrequency.GUILogging);
+            // Check if taskschd.msc is already running
+            var processes = System.Diagnostics.Process.GetProcessesByName("mmc");
+
+            bool taskSchedulerFound = false;
+
+            IntPtr foregroundWindow = GetForegroundWindow();
+
+            try
+            {
+                foreach (var process in processes)
+                {
+                    if (process.MainWindowTitle.Contains("Task Scheduler"))
+                    {
+                        if (process.MainWindowHandle != foregroundWindow)
+                        {
+                            if (process.MainWindowHandle != foregroundWindow || IsIconic(process.MainWindowHandle))
+                            {
+                                // Maximize the window
+                                ShowWindowAsync(process.MainWindowHandle, SW_MAXIMIZE);
+
+                                // Bring it to the front
+                                SetForegroundWindow(process.MainWindowHandle);
+                            }
+                        }
+                        taskSchedulerFound = true;
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var process in processes)
+                {
+                    process.Dispose();
+                }
+            }
+
+            // If not found, start a new instance
+            if (!taskSchedulerFound)
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "taskschd.msc",
+                    UseShellExecute = true
+                });
+            }
+        }
+
+        private void OutputTextBox_Initialize(TaskScheduler task)
+        {
+            if (task != null)
+            {
+                DateTime lastRunTime = task.LastRunTime;
+                DateTime nextRunTime = task.NextRunTime;
+
+                if (OutputTextBox.Text.Length == 0)
+                {
+                    if (task.LastTaskResult != 0x41303)
+                    {
+                        OutputTextBox.Text = $"Last run time: {lastRunTime}";
+                    }
+                    else if (!EnabledCheckBox.Checked && task.LastTaskResult == 0x41303)
+                    {
+                        OutputTextBox.Text = "The task has not been enabled yet.";
+                    }
+                    else
+                    {
+                        OutputTextBox.Text = "The task has not run yet.";
+                    }
+                }
+                OutputTextBox1.Text = $"Next run time: {nextRunTime}";
+            }
+            else
+            {
+                OutputTextBox.Text = "Task not found.";
+            }
+        }
+
+        private async void LoadTaskDetails()
+        {
+            await Task.Run(() =>
+            {
+                WriteLine("Loading task details", LoggingFrequency.GUILogging);
+                bool isIdleTrigger = false;
+                bool isEnabled = false;
+                string arguments = string.Empty;
+                string triggerType = ""; // For storing the type of trigger
+
+                using (TaskService ts = new TaskService())
+                {
+                    TaskScheduler task = ts.GetTask(TaskName);
+                    if (task != null)
+                    {
+                        isIdleTrigger = task.Definition.Triggers.Any(t => t.TriggerType == TaskTriggerType.Idle);
+                        WriteLine($"Idle trigger: {isIdleTrigger}", LoggingFrequency.DebugLogging);
+                        isEnabled = task.Enabled;
+                        WriteLine($"Task enabled: {isEnabled}", LoggingFrequency.DebugLogging);
+                        arguments = (task.Definition.Actions[0] as ExecAction)?.Arguments;
+                        WriteLine($"Arguments: {arguments}", LoggingFrequency.DebugLogging);
+
+                        // Process the triggers here
+                        var triggers = task.Definition.Triggers;
+                        WriteLine($"Number of triggers: {triggers.Count}", LoggingFrequency.DebugLogging);
+                        if (triggers.OfType<DailyTrigger>().Any(t => t.Repetition != null && t.Repetition.Interval.TotalHours == 1))
+                        {
+                            triggerType = "Hour";
+                        }
+                        else if (triggers.OfType<DailyTrigger>().Any())
+                        {
+                            triggerType = "Day";
+                        }
+                        else if (triggers.OfType<WeeklyTrigger>().Any())
+                        {
+                            triggerType = "Week";
+                        }
+                        else if (triggers.OfType<MonthlyTrigger>().Any())
+                        {
+                            triggerType = "Month";
+                        }
+                        WriteLine($"Trigger type: {triggerType}", LoggingFrequency.DebugLogging);
+                        DateTime? extractedTriggerTime = null;
+                        var timeTrigger = triggers.FirstOrDefault(t => t is DailyTrigger || t is WeeklyTrigger || t is MonthlyTrigger);
+                        if (timeTrigger != null)
+                        {
+                            extractedTriggerTime = DateTime.Today + timeTrigger.StartBoundary.TimeOfDay;
+                        }
+
+                        if (!IsDisposed && !Disposing && IsHandleCreated)
+                        {
+                            this.Invoke((MethodInvoker)delegate
+                            {
+                                _loadingTaskDetails = true;
+                                try
+                                {
+                                    OnIdleCheckBox.Checked = isIdleTrigger;
+                                    EnabledCheckBox.Checked = isEnabled;
+                                    UpdateUIFromArguments(arguments);
+                                    UpdateRunEveryComboBox(triggerType);
+                                    OutputTextBox_Initialize(task);
+                                    if (extractedTriggerTime.HasValue)
+                                    {
+                                        UpdateTimeComboBoxes(extractedTriggerTime.Value, Settings.Default.TwentyFourHourMode);
+                                    }
+                                }
+                                finally
+                                {
+                                    _loadingTaskDetails = false;
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+        }
+
+        private void UpdateUIFromArguments(string arguments)
+        {
+            WriteLine($"Updating UI from arguments: {arguments}", LoggingFrequency.DebugLogging);
+            if (arguments != null)
+            {
+                // Extract multithreading argument
+                MultithreadedCheckBox.Checked = arguments.Contains("-m");
+                WriteLine($"Multithreaded: {MultithreadedCheckBox.Checked}", LoggingFrequency.DebugLogging);
+                var match = Regex.Match(arguments, @"-m:(\d+)");
+                if (match.Success)
+                {
+                    ThreadsNumericUpDown.Value = int.Parse(match.Groups[1].Value);
+                }
+                else if (arguments.Contains("-m"))
+                {
+                    ThreadsNumericUpDown.Value = 0;  // -m without a specific thread count
+                }
+                WriteLine($"Threads: {ThreadsNumericUpDown.Value}", LoggingFrequency.DebugLogging);
+
+                // Extract quoted paths first, then fallback to unquoted drive/UNC tokens for legacy tasks
+                var pathsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                string remainingArgs = arguments;
+
+                foreach (Match quotedMatch in Regex.Matches(arguments, "\"([^\"]+)\""))
+                {
+                    string qPath = quotedMatch.Groups[1].Value.Trim();
+                    if (!string.IsNullOrWhiteSpace(qPath) && !qPath.StartsWith('-'))
+                    {
+                        if (qPath.Length == 2 && char.IsLetter(qPath[0]) && qPath[1] == ':')
+                            qPath += "\\";
+                        AddParsedSchedulePath(qPath, pathsSet);
+                    }
+                }
+
+                remainingArgs = Regex.Replace(remainingArgs, "\"[^\"]+\"", " ");
+
+                var rawDrivePaths = Regex.Split(remainingArgs, @"(?=(\b[A-Za-z]:\\)|(\\\\[^\\\s]+\\))")
+                                         .Where(path => !string.IsNullOrWhiteSpace(path))
+                                         .ToList();
+                WriteLine($"Raw drive paths: {string.Join(", ", rawDrivePaths)}", LoggingFrequency.DebugLogging);
+
+                foreach (var rawPath in rawDrivePaths)
+                {
+                    var cleanedPath = rawPath.Trim().Replace("\n", string.Empty).Trim('"');
+                    if (!cleanedPath.StartsWith('-'))
+                    {
+                        AddParsedSchedulePath(cleanedPath, pathsSet);
+                    }
+                }
+                PathsTextBox.Text = string.Join(Environment.NewLine, pathsSet);
+            }
+        }
+
+        private void AddParsedSchedulePath(string cleanedPath, HashSet<string> pathsSet)
+        {
+            if (cleanedPath.Length == 3 && char.IsLetter(cleanedPath[0]) && cleanedPath[1] == ':' && cleanedPath[2] == '\\')
+            {
+                int idx = DrivesCheckedListBox.Items.IndexOf(char.ToUpperInvariant(cleanedPath[0]).ToString());
+                if (DrivesCheckedListBox.Visible && idx >= 0)
+                {
+                    DrivesCheckedListBox.SetItemChecked(idx, true);
+                }
+                else
+                {
+                    pathsSet.Add(cleanedPath);
+                }
+            }
+            else if (cleanedPath.Length > 3)
+            {
+                pathsSet.Add(cleanedPath);
+            }
+        }
+
+        private void UpdateRunEveryComboBox(string triggerType)
+        {
+            WriteLine($"Updating RunEveryComboBox: {triggerType}", LoggingFrequency.DebugLogging);
+            switch (triggerType)
+            {
+                case "Hour":
+                    RunEveryComboBox.SelectedItem = "Hour";
+                    break;
+                case "Day":
+                    RunEveryComboBox.SelectedItem = "Day";
+                    break;
+                case "Week":
+                    RunEveryComboBox.SelectedItem = "Week";
+                    break;
+                case "Month":
+                    RunEveryComboBox.SelectedItem = "Month";
+                    break;
+                default:
+                    RunEveryComboBox.SelectedItem = null; // No matching trigger found
+                    break;
+            }
+        }
+
+        public void InitializeTimeValues(TriggerCollection triggers = null)
+        {
+            WriteLine("Initializing time values", LoggingFrequency.DebugLogging);
+            // If triggers are not provided, fetch them
+            if (triggers == null)
+            {
+                using (TaskService ts = new TaskService())
+                {
+                    TaskScheduler task = ts.FindTask(TaskName);
+                    if (task != null)
+                    {
+                        triggers = task.Definition.Triggers;
+                    }
+                }
+            }
+
+            // If triggers are still null, we can't proceed
+            if (triggers == null) return;
+
+            var timeTrigger = triggers.FirstOrDefault(t => t is DailyTrigger || t is WeeklyTrigger || t is MonthlyTrigger);
+
+            if (timeTrigger != null)
+            {
+                // Extract the start time from the trigger and convert it to DateTime
+                var triggerTime = DateTime.Today + timeTrigger.StartBoundary.TimeOfDay;
+                this.Invoke((MethodInvoker)delegate
+                {
+                    UpdateTimeComboBoxes(triggerTime, Settings.Default.TwentyFourHourMode);
+                });
+            }
+        }
+
+        private void UpdateTimeComboBoxes(DateTime triggerTime, bool is24HourMode)
+        {
+            WriteLine($"Updating time ComboBoxes: {triggerTime}, 24-hour mode: {is24HourMode}", LoggingFrequency.DebugLogging);
+            // Round the time down to the nearest hour for the ComboBoxes
+            DateTime roundedTime = new DateTime(triggerTime.Year, triggerTime.Month, triggerTime.Day, triggerTime.Hour, 0, 0);
+
+            if (!is24HourMode)
+            {
+                // Select the rounded time in 12-hour format for the ComboBoxes
+                TimeDigitsComboBox.SelectedItem = roundedTime.ToString("h:mm");
+                TimeOfDayComboBox.SelectedItem = roundedTime.ToString("tt");
+            }
+            else
+            {
+                // Select the rounded time in 24-hour format for the ComboBoxes
+                TimeDigitsComboBox.SelectedItem = roundedTime.ToString("HH:mm");
+                TimeOfDayComboBox.SelectedItem = null;
+            }
+
+            // Set the DateTimePicker's value to the exact trigger time
+            dateTimePicker1.Value = triggerTime;
+        }
+
+        string currentExePath = Environment.ProcessPath;
+
+        private string _defaultDescription = "Runs WinThumbsPreloader based on user's schedule";
+        private string _description = "";
+
+        [Browsable(true)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public string Description
+        {
+            get => _description;
+            set => _description = value;
+        }
+
+        // Use this when assigning to the task scheduler (runtime logic only)
+        public string EffectiveDescription => string.IsNullOrWhiteSpace(_description) ? _defaultDescription : _description;
+
+        private void SaveTask()
+        {
+            WriteLine("Saving task", LoggingFrequency.GUILogging);
+            try
+            {
+                DateTime? selectedTime = GetSelectedTime();
+                if (!selectedTime.HasValue)
+                {
+                    throw new Exception("Selected time is invalid.");
+                }
+
+                DateTime triggerStart = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day,
+                                                     selectedTime.Value.Hour, selectedTime.Value.Minute, 0);
+
+                // Adjust for next day if the selected time is before the current time
+                if (triggerStart < DateTime.Now)
+                {
+                    triggerStart = triggerStart.AddDays(1);
+                }
+
+                using (TaskService ts = new TaskService())
+                {
+                    TaskDefinition td = ts.NewTask();
+                    td.RegistrationInfo.Description = EffectiveDescription;
+
+                    // Set trigger based on user's selection
+                    string selectedPeriod = RunEveryComboBox.SelectedItem?.ToString() ?? string.Empty;
+                    if (selectedPeriod == "Hour") // Special handling for hourly trigger
+                    {
+                        var dailyTrigger = new DailyTrigger();
+                        dailyTrigger.StartBoundary = triggerStart;
+                        dailyTrigger.Repetition.Duration = TimeSpan.FromDays(1);
+                        dailyTrigger.Repetition.Interval = TimeSpan.FromHours(1);
+                        td.Triggers.Add(dailyTrigger);
+                    }
+                    else
+                    {
+                        // Handling for Day, Week, Month triggers
+                        Trigger trigger = null;
+                        switch (selectedPeriod)
+                        {
+                            case "Day":
+                                trigger = new DailyTrigger();
+                                break;
+                            case "Week":
+                                trigger = new WeeklyTrigger();
+                                break;
+                            case "Month":
+                                trigger = new MonthlyTrigger();
+                                break;
+                        }
+
+                        if (trigger != null)
+                        {
+                            trigger.StartBoundary = triggerStart;
+                            td.Triggers.Add(trigger);
+                        }
+                    }
+
+                    if (OnIdleCheckBox.Checked)
+                    {
+                        td.Triggers.Add(new IdleTrigger());
+                    }
+
+                    string arguments = ConstructArguments();
+                    if (arguments != null)
+                    {
+                        td.Actions.Add(new ExecAction(currentExePath, arguments, null));
+                        /* td.Settings.RunOnlyIfIdle = true; */
+                        TaskScheduler task = ts.RootFolder.RegisterTaskDefinition(TaskName, td);
+                        task.Enabled = EnabledCheckBox.Checked;
+                    }
+                    else
+                    {
+                        return; // Exit if arguments are null
+                    }
+
+                    // Display next run time
+                    TaskScheduler task1 = ts.FindTask(TaskName);
+                    OutputTextBox1.Text = $"Next run time: {task1.NextRunTime}";
+
+                    OutputTextBox.Text = "Task saved successfully.";
+                }
+                WriteLine("Task saved successfully", LoggingFrequency.GUILogging);
+                LoadTaskDetails();
+            }
+            catch (Exception ex)
+            {
+                WriteLine($"Error saving task: {ex.Message}", LoggingFrequency.GUILogging);
+                OutputTextBox.Text = "Task failed to save. If settings are valid, try restarting as admin.";
+            }
+        }
+
+        private void DeleteTask()
+        {
+            WriteLine("Deleting task", LoggingFrequency.GUILogging);
+            using (TaskService ts = new TaskService())
+            {
+                try
+                {
+                    ts.RootFolder.DeleteTask(TaskName);
+                    EnabledCheckBox.Checked = false;
+                    WriteLine("Task deleted successfully", LoggingFrequency.GUILogging);
+                    OutputTextBox.Text = "Task deleted successfully.";
+                    OutputTextBox1.Text = "";
+                }
+                catch (Exception ex)
+                {
+                    WriteLine($"Error deleting task: {ex.Message}", LoggingFrequency.GUILogging);
+                    OutputTextBox.Text = "Failed to delete task. If the task exists, try restarting as admin.";
+                }
+            }
+            LoadTaskDetails();
+        }
+
+        private DateTime? GetSelectedTime()
+        {
+            // Use DateTimePicker's value if DetailedTime checkbox is checked
+            if (Settings.Default.DetailedTimeMode)
+            {
+                return dateTimePicker1.Value;
+            }
+
+            bool is24HourMode = Settings.Default.TwentyFourHourMode;
+
+            if (TimeDigitsComboBox.SelectedItem == null ||
+                (!is24HourMode && TimeOfDayComboBox.SelectedItem == null) ||
+                RunEveryComboBox.SelectedItem == null)
+            {
+                MessageBox.Show("Please select the time to be scheduled before saving the task.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return null;
+            }
+
+            DateTime selectedTime;
+            if (is24HourMode)
+            {
+                string timeStr = TimeDigitsComboBox.SelectedItem.ToString() ?? string.Empty;
+                if (!DateTime.TryParseExact(timeStr, ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out selectedTime))
+                {
+                    MessageBox.Show("The selected time is invalid. Please correct it before saving the task.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return null;
+                }
+            }
+            else
+            {
+                string timeStr = TimeDigitsComboBox.SelectedItem.ToString() + " " + TimeOfDayComboBox.SelectedItem!.ToString();
+                if (!DateTime.TryParseExact(timeStr, "h:mm tt", CultureInfo.InvariantCulture, DateTimeStyles.None, out selectedTime))
+                {
+                    MessageBox.Show("The selected time is invalid. Please correct it before saving the task.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return null;
+                }
+            }
+
+            return selectedTime;
+        }
+
+        private string ConstructArguments()
+        {
+            WriteLine("Constructing arguments", LoggingFrequency.DebugLogging);
+            string arguments = "-r -s ";
+
+            if (MultithreadedCheckBox.Checked)
+            {
+                if (ThreadsNumericUpDown.Value > 0) arguments += $"-m:{ThreadsNumericUpDown.Value} ";
+                else if (ThreadsNumericUpDown.Value == 0) arguments += $"-m ";
+            }
+            WriteLine($"Arguments: {arguments}", LoggingFrequency.DebugLogging);
+
+            // Use a HashSet to store unique paths
+            var uniquePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Assuming CheckedListBox1 contains drive letters
+            foreach (string driveLetter in DrivesCheckedListBox.CheckedItems)
+            {
+                uniquePaths.Add($"{driveLetter}:\\");
+            }
+
+            if (!string.IsNullOrWhiteSpace(PathsTextBox.Text))
+            {
+                // Append each line from PathsTextBox.Text as a separate path
+                var paths = PathsTextBox.Text.Split(["\r\n", "\r", "\n"], StringSplitOptions.RemoveEmptyEntries);
+                foreach (var path in paths)
+                {
+                    var correctedPath = path.Replace('/', '\\').Trim(); // Convert forward slashes to backslashes and trim
+                    uniquePaths.Add(correctedPath);
+                }
+            }
+            WriteLine($"Unique paths: {string.Join(", ", uniquePaths)}", LoggingFrequency.DebugLogging);
+
+            if (uniquePaths.Count == 0)
+            {
+                MessageBox.Show("Please select at least one drive letter or provide a valid path before saving the task.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return null;
+            }
+
+            // Quote paths that contain spaces (avoid trailing backslash before closing quote for CommandLineToArgvW)
+            var formattedPaths = uniquePaths.Select(p =>
+            {
+                string trimmed = p.Trim().Trim('"');
+                if (!trimmed.Contains(' '))
+                    return trimmed;
+
+                if (trimmed.Length > 3 && trimmed.EndsWith('\\'))
+                    trimmed = trimmed.TrimEnd('\\');
+
+                return $"\"{trimmed}\"";
+            });
+
+            arguments += string.Join(" ", formattedPaths);
+            WriteLine($"Final arguments: {arguments}", LoggingFrequency.DebugLogging);
+
+            return arguments.Trim();
+        }
+
+        public void ToggleDriveVisibility(bool showDrives)
+        {
+            DrivesLabel.Visible = showDrives;
+            DrivesCheckedListBox.Visible = showDrives;
+
+            if (showDrives)
+            {
+                // Enable DrivesCheckedListBox and transfer paths from PathsTextBox
+                TransferPathsToDrives();
+                // Reset positions if drives are shown
+                PathsLabel.Location = new Point(7, 125);
+                PathsTextBox.Location = new Point(7, 143);
+                PathsTextBox.Height = 52;  // Original height
+            }
+            else
+            {
+                // Disable DrivesCheckedListBox and transfer checked drives to PathsTextBox
+                TransferDrivesToPaths();
+                // Change positions if drives are hidden
+                PathsLabel.Location = new Point(7, 46);
+                PathsTextBox.Location = new Point(7, 64);
+                PathsTextBox.Height = 131; // Increased height to fill space
+            }
+        }
+
+        private void TransferDrivesToPaths()
+        {
+            var paths = PathsTextBox.Text.Split(
+                [Environment.NewLine], StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            // Add checked drive letters to the paths list
+            foreach (var item in DrivesCheckedListBox.CheckedItems)
+            {
+                string driveLetter = item.ToString();
+                string drivePath = $"{driveLetter}:\\";
+                if (!paths.Contains(drivePath))
+                {
+                    paths.Add(drivePath);
+                }
+            }
+
+            // Clear the DrivesCheckedListBox selections
+            for (int i = 0; i < DrivesCheckedListBox.Items.Count; i++)
+            {
+                DrivesCheckedListBox.SetItemChecked(i, false);
+            }
+
+            // Update the PathsTextBox with the new paths list
+            PathsTextBox.Text = string.Join(Environment.NewLine, paths);
+        }
+
+        private void TransferPathsToDrives()
+        {
+            var paths = PathsTextBox.Text.Split(
+                [Environment.NewLine], StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var path in paths)
+            {
+                if (path.EndsWith('\\') && path.Length == 3) // e.g., "C:\"
+                {
+                    // If the path is a drive letter, check it in DrivesCheckedListBox
+                    int index = DrivesCheckedListBox.Items.IndexOf(path[0].ToString());
+                    if (index != -1)
+                    {
+                        DrivesCheckedListBox.SetItemChecked(index, true);
+                    }
+                }
+            }
+
+            // Remove drive paths from PathsTextBox
+            var nonDrivePaths = paths.Where(p => p.Length > 3 || !p.EndsWith('\\')).ToList();
+            PathsTextBox.Text = string.Join(Environment.NewLine, nonDrivePaths);
+        }
+
+        public void ChangeDriveLetterSortingOrder()
+        {
+            // Keep track of the checked items
+            var checkedItems = DrivesCheckedListBox.CheckedItems
+                                .Cast<string>()
+                                .ToList();
+
+            // Clear the items from the CheckedListBox
+            DrivesCheckedListBox.Items.Clear();
+
+            List<char> alphabet = [ 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+                           'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+                           'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z' ];
+
+            List<char> reorderedAlphabet = Settings.Default.DriveSortChoice == "Horizontal"
+                                           ? SortDriveLettersHorizontally(alphabet)
+                                           : SortDriveLettersVertically(alphabet);
+
+            // Add sorted items to the CheckedListBox
+            foreach (char letter in reorderedAlphabet)
+            {
+                DrivesCheckedListBox.Items.Add(letter.ToString());
+            }
+
+            // Restore the checked state to the corresponding sorted items
+            foreach (var item in checkedItems)
+            {
+                int index = DrivesCheckedListBox.Items.IndexOf(item);
+                if (index != -1)
+                {
+                    DrivesCheckedListBox.SetItemChecked(index, true);
+                }
+            }
+        }
+
+        private List<char> SortDriveLettersHorizontally(List<char> alphabet)
+        {
+            // Calculate the number of items per column
+            int itemsPerColumn = (int)Math.Ceiling((double)alphabet.Count / 3);
+
+            // Reorder the list for horizontal sorting
+            List<char> reorderedAlphabet = new List<char>();
+            for (int i = 0; i < itemsPerColumn; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                {
+                    int index = i + j * itemsPerColumn;
+                    if (index < alphabet.Count)
+                    {
+                        reorderedAlphabet.Add(alphabet[index]);
+                    }
+                }
+            }
+            return reorderedAlphabet;
+        }
+
+        private List<char> SortDriveLettersVertically(List<char> alphabet)
+        {
+            // Vertical sorting is essentially the default order
+            return alphabet;
+        }
+
+        private void PopulateTimeDigitsComboBox(bool is24HourMode)
+        {
+            string[] twelveHourTime = ["1:00", "2:00", "3:00", "4:00", "5:00", "6:00", "7:00", "8:00", "9:00", "10:00", "11:00", "12:00"];
+            string[] twentyFourHourTime = [ "00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "07:00", "08:00", "09:00",
+            "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"];
+
+            TimeDigitsComboBox.Items.Clear(); // Clear existing items
+            if (!is24HourMode)
+            {
+                TimeDigitsComboBox.Items.AddRange(twelveHourTime);
+            }
+            else if (is24HourMode)
+            {
+                TimeDigitsComboBox.Items.AddRange(twentyFourHourTime);
+            }
+        }
+
+        public void Set24HourMode()
+        {
+            if (Settings.Default.TwentyFourHourMode == false)
+            {
+                TimeOfDayComboBox.Enabled = true;
+                PopulateTimeDigitsComboBox(false);
+                dateTimePicker1.CustomFormat = "hh:mm tt";
+            }
+            else if (Settings.Default.TwentyFourHourMode == true)
+            {
+                TimeOfDayComboBox.Enabled = false;
+                PopulateTimeDigitsComboBox(true);
+                dateTimePicker1.CustomFormat = "HH:mm";
+            }
+        }
+
+        public void SetDetailedTimeMode()
+        {
+            if (Settings.Default.DetailedTimeMode == false)
+            {
+                dateTimePicker1.Enabled = false;
+                dateTimePicker1.Visible = false;
+
+                TimeDigitsComboBox.Visible = true;
+                TimeDigitsComboBox.Enabled = true;
+
+                TimeOfDayComboBox.Visible = true;
+                TimeOfDayComboBox.Enabled = true;
+            }
+            else if (Settings.Default.DetailedTimeMode == true)
+            {
+                dateTimePicker1.Enabled = true;
+                dateTimePicker1.Visible = true;
+
+                TimeDigitsComboBox.Visible = false;
+                TimeDigitsComboBox.Enabled = false;
+
+                TimeOfDayComboBox.Visible = false;
+                TimeOfDayComboBox.Enabled = false;
+            }
+        }
+    }
+}
