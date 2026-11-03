@@ -1,0 +1,206 @@
+name: Build Installer & Release
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional version override (e.g., 3.0.0 or 3.1.0-beta1)'
+        required: false
+        type: string
+      publish_release:
+        description: 'Create/update a GitHub Release from this manual run'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build-installer:
+    name: Test, Audit, Build & Package (Inno Setup)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve and synchronize version
+        id: version
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          $assemblyInfoPath = "WinThumbsPreloader/WinThumbsPreloader/Properties/AssemblyInfo.cs"
+          $csprojPath = "WinThumbsPreloader/WinThumbsPreloader/WinThumbsPreloader.csproj"
+
+          $rawVersion = ""
+          if (-not [string]::IsNullOrWhiteSpace($env:INPUT_VERSION)) {
+            $rawVersion = $env:INPUT_VERSION.Trim()
+          }
+          elseif ($env:GITHUB_REF -like "refs/tags/v*") {
+            $rawVersion = $env:GITHUB_REF -replace "^refs/tags/v", ""
+          }
+
+          if ($rawVersion -ne "") {
+            $rawVersion = $rawVersion.TrimStart('v', 'V').Trim()
+            if ($rawVersion -notmatch "^(\d+\.\d+\.\d+)(-beta\d+)?$") {
+              Write-Error "Invalid version format '$rawVersion'. Expected X.Y.Z or X.Y.Z-betaN."
+              exit 1
+            }
+            $numericVersion = $Matches[1]
+            $fullVersion = $rawVersion
+
+            Write-Host "Synchronizing version to $fullVersion (numeric: $numericVersion)..."
+
+            $asmContent = Get-Content $assemblyInfoPath -Raw
+            $asmContent = $asmContent -replace '\[assembly:\s*AssemblyVersion\("[^"]+"\)\]', "[assembly: AssemblyVersion(`"$numericVersion`")]"
+            $asmContent = $asmContent -replace '\[assembly:\s*AssemblyFileVersion\("[^"]+"\)\]', "[assembly: AssemblyFileVersion(`"$numericVersion`")]"
+            $asmContent = $asmContent -replace '\[assembly:\s*AssemblyInformationalVersion\("[^"]+"\)\]', "[assembly: AssemblyInformationalVersion(`"$fullVersion`")]"
+            Set-Content -Path $assemblyInfoPath -Value $asmContent -NoNewline
+
+            $projContent = Get-Content $csprojPath -Raw
+            $projContent = $projContent -replace '<AssemblyVersion>[^<]+</AssemblyVersion>', "<AssemblyVersion>$numericVersion</AssemblyVersion>"
+            $projContent = $projContent -replace '<Version>[^<]+</Version>', "<Version>$fullVersion</Version>"
+            $projContent = $projContent -replace '<FileVersion>[^<]+</FileVersion>', "<FileVersion>$numericVersion</FileVersion>"
+            Set-Content -Path $csprojPath -Value $projContent -NoNewline
+          }
+          else {
+            $asmContent = Get-Content $assemblyInfoPath -Raw
+            if ($asmContent -match '\[assembly:\s*AssemblyInformationalVersion\("([^"]+)"\)\]') {
+              $fullVersion = $Matches[1]
+            }
+            else {
+              $fullVersion = "3.0.0"
+            }
+            if ($fullVersion -match '^(\d+\.\d+\.\d+)') {
+              $numericVersion = $Matches[1]
+            }
+            else {
+              $numericVersion = "3.0.0"
+            }
+          }
+
+          $isPrerelease = ($fullVersion -match "-beta|-alpha|-rc") ? "true" : "false"
+          $tagName = "v$fullVersion"
+
+          "full_version=$fullVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "numeric_version=$numericVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "tag_name=$tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "is_prerelease=$isPrerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          Write-Host "Resolved Version: $fullVersion (Tag: $tagName, Prerelease: $isPrerelease)"
+
+      - name: Restore dependencies
+        run: dotnet restore WinThumbsPreloader/WinThumbsPreloader.sln
+
+      - name: Audit NuGet dependencies for vulnerabilities
+        shell: pwsh
+        run: |
+          $auditOutput = dotnet list WinThumbsPreloader/WinThumbsPreloader.sln package --vulnerable --include-transitive | Out-String
+          Write-Host $auditOutput
+          if ($auditOutput -match "Critical|High|Moderate") {
+            Write-Error "Vulnerable NuGet packages detected!"
+            exit 1
+          }
+
+      - name: Run unit and integration tests
+        run: dotnet test WinThumbsPreloader/WinThumbsPreloader.Tests/WinThumbsPreloader.Tests.csproj --configuration Release --no-restore --verbosity normal
+
+      - name: Build WinThumbsPreloader (Release win-x64)
+        run: dotnet build WinThumbsPreloader/WinThumbsPreloader/WinThumbsPreloader.csproj --configuration Release -r win-x64 --no-self-contained
+
+      - name: Compile Inno Setup installer & generate SHA-256 digest
+        id: innosetup
+        shell: pwsh
+        env:
+          FULL_VERSION: ${{ steps.version.outputs.full_version }}
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            $cmd = Get-Command iscc -ErrorAction SilentlyContinue
+            if ($cmd) {
+              $iscc = $cmd.Source
+            }
+            else {
+              Write-Host "Installing Inno Setup via Chocolatey..."
+              choco install innosetup -y --no-progress
+              $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+            }
+          }
+
+          Write-Host "Compiling InnoSetup/installer.iss using $iscc..."
+          & $iscc "InnoSetup\installer.iss"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Inno Setup compilation failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+
+          $setupExe = Get-ChildItem "InnoSetup\Output\*-setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $setupExe) {
+            Write-Error "Compiled installer executable not found in InnoSetup\Output\"
+            exit 1
+          }
+
+          $hash = (Get-FileHash $setupExe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sha256FilePath = "$($setupExe.FullName).sha256"
+          "$hash  $($setupExe.Name)" | Set-Content -Path $sha256FilePath -Encoding utf8 -NoNewline
+
+          Write-Host "Generated installer: $($setupExe.FullName) ($($setupExe.Length) bytes)"
+          Write-Host "SHA256: $hash"
+
+          "installer_path=$($setupExe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "sha256_file_path=$sha256FilePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "installer_name=$($setupExe.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "installer_sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### WinThumbsPreloader Installer Build"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **Version:** ``$env:FULL_VERSION``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **Installer:** ``$($setupExe.Name)`` ($([math]::Round($setupExe.Length / 1MB, 2)) MB)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **SHA-256:** ``$hash``"
+
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinThumbsPreloader-${{ steps.version.outputs.full_version }}-Installer
+          path: |
+            ${{ steps.innosetup.outputs.installer_path }}
+            ${{ steps.innosetup.outputs.sha256_file_path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: WinThumbsPreloader ${{ steps.version.outputs.full_version }}
+          prerelease: ${{ steps.version.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
+          body: |
+            ### Checksums (SHA-256)
+            ```text
+            ${{ steps.innosetup.outputs.installer_sha256 }}  ${{ steps.innosetup.outputs.installer_name }}
+            ```
+          files: |
+            ${{ steps.innosetup.outputs.installer_path }}
+            ${{ steps.innosetup.outputs.sha256_file_path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
