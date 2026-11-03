@@ -90,7 +90,7 @@ Building upon the foundation of **v1** (core preloading and Explorer context men
 ## Installation
 
 ### Option 1: Installer (Recommended)
-1. Run `WinThumbsPreloader-3.0.0-setup.exe` (located in `InnoSetup/Output/` when compiled locally, or from the Releases page).
+1. Run `WinThumbsPreloader-3.0.0-setup.exe` (located in `InnoSetup/Output/` when compiled locally, or from the [Releases page](https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases)).
 2. The installer registers the Windows Explorer right-click context menus for **Folders**, **Folder Backgrounds**, and **Drives**, configures `SilentCleanup` cache protection, and adds `WinThumbsPreloader` to your system `PATH`.
 
 ### Option 2: Standalone Executable
@@ -178,7 +178,7 @@ This project stands on the shoulders of its predecessors:
 
 1. **[Dmitry Bruhov](https://github.com/Bruhov)** — Creator of the original **[WinThumbsPreloader (v1)](https://github.com/Bruhov/WinThumbsPreloader)** (2018–2020), who designed the original concept, Windows Shell thumbnail extraction integration, CLI interface, and Windows Explorer context menu setup.
 2. **[Mutahar Farooq](https://github.com/Mfarooq360)** — Creator and maintainer of **[WinThumbsPreloader V2](https://github.com/Mfarooq360/WinThumbsPreloader-V2)** (2025–2026), who expanded the utility into a full-featured suite with the GUI dashboard, Thumbnail Cache Manager (Backup, Restore, Reset Alerts), Task Scheduler integration, Settings management, logging system, and multi-threaded scanning.
-3. **[João Schlickmann](https://github.com/joaoschlickmann)** — Creator of the **v3 Fork**, adding the streaming producer–consumer pipeline, STA PIDL caching, two-lane heavy-media isolation, binary `CMMM`/`IMMM` cache sanitization and CRC64 repair, shared-handle backup/restore, bucket spillover, UNC/elevated mapped-drive resolution, and automated test suite.
+3. **[João Schlickmann](https://github.com/joaoschlickmann)** — Creator of **[WinThumbsPreloader V3](https://github.com/joaoschlickmann/WinThumbsPreloader-V3)**, adding the streaming producer–consumer pipeline, STA PIDL caching, two-lane heavy-media isolation, binary `CMMM`/`IMMM` cache sanitization and CRC64 repair, shared-handle backup/restore, bucket spillover, UNC/elevated mapped-drive resolution, and automated test suite.
 
 ---
 

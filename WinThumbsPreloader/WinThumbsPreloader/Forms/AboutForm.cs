@@ -111,7 +111,7 @@ namespace WinThumbsPreloader
                     using (HttpClient client = new HttpClient())
                     {
                         client.DefaultRequestHeaders.UserAgent.ParseAdd("WinThumbPreloader");
-                        string GitHubApiResponse = await client.GetStringAsync("https://api.github.com/repos/joaoschlickmann/WinThumbsPreloader-V2/releases");
+                        string GitHubApiResponse = await client.GetStringAsync("https://api.github.com/repos/joaoschlickmann/WinThumbsPreloader-V3/releases");
                         var match = Regex.Match(GitHubApiResponse, @"""tag_name"":\s*""v([\d\.]+(-beta\d+)?)""");
                         if (!match.Success)
                             return UpdateState.Updated;
@@ -255,7 +255,7 @@ namespace WinThumbsPreloader
             if (UpdateLabel.Text == Resources.AboutForm_WinThumbsPreloader_NewVersionAvailable ||
                 UpdateLabel.Text == Resources.AboutForm_WinThumbsPreloader_BetaVersionAvailable)
             {
-                url = "https://github.com/joaoschlickmann/WinThumbsPreloader-V2";
+                url = "https://github.com/joaoschlickmann/WinThumbsPreloader-V3";
                 WriteLine("Opening GitHub link: " + url, LoggingFrequency.GUILogging);
             }
 
