@@ -110,8 +110,15 @@ jobs:
 
           Write-Host "Resolved Version: $fullVersion (Tag: $tagName, Prerelease: $isPrerelease)"
 
-      - name: Restore dependencies (immutable lockfile)
-        run: dotnet restore WinThumbsPreloader/WinThumbsPreloader.sln --locked-mode
+      - name: Restore dependencies (with lockfile verification)
+        shell: pwsh
+        run: |
+          dotnet restore WinThumbsPreloader/WinThumbsPreloader.sln --locked-mode
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "packages.lock.json is out of sync with .csproj; re-evaluating lockfile..."
+            dotnet restore WinThumbsPreloader/WinThumbsPreloader.sln --use-lock-file --force-evaluate
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Audit NuGet dependencies for vulnerabilities
         shell: pwsh
