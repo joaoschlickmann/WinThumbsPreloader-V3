@@ -61,7 +61,11 @@ namespace WinThumbsPreloader
             {
                 AllowAutoRedirect = true,
                 MaxAutomaticRedirections = 5,
-                ConnectTimeout = TimeSpan.FromSeconds(10)
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+                SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+                {
+                    EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13
+                }
             };
 
             var client = new HttpClient(handler)
@@ -84,6 +88,14 @@ namespace WinThumbsPreloader
                     HttpCompletionOption.ResponseHeadersRead,
                     cancellationToken).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
+
+                Uri finalApiUri = response.RequestMessage?.RequestUri;
+                if (finalApiUri != null && (!TryParseSecureHttpsUri(finalApiUri.AbsoluteUri, out Uri verifiedApiUri) ||
+                    !verifiedApiUri.Host.Equals("api.github.com", StringComparison.OrdinalIgnoreCase) ||
+                    !verifiedApiUri.AbsolutePath.StartsWith($"/repos/{RepositoryOwner}/{RepositoryName}/", StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new InvalidOperationException("Redirected API URL is not a trusted GitHub API endpoint.");
+                }
 
                 long? contentLength = response.Content.Headers.ContentLength;
                 if (contentLength.HasValue && contentLength.Value > MaxApiResponseBytes)
@@ -293,7 +305,7 @@ namespace WinThumbsPreloader
                 string digest = TryGetString(asset, "digest");
 
                 string safeName = SanitizeInstallerFileName(rawName);
-                if (string.IsNullOrEmpty(safeName) || !IsTrustedGitHubDownloadUrl(url))
+                if (string.IsNullOrEmpty(safeName) || !IsTrustedGitHubDownloadUrl(url, allowCdnRedirectHost: false))
                     continue;
 
                 if (size < 0 || size > MaxInstallerSizeBytes)
@@ -390,7 +402,7 @@ namespace WinThumbsPreloader
                    uri.AbsolutePath.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase);
         }
 
-        public static bool IsTrustedGitHubDownloadUrl(string url)
+        public static bool IsTrustedGitHubDownloadUrl(string url, bool allowCdnRedirectHost = true)
         {
             if (!TryParseSecureHttpsUri(url, out Uri uri))
                 return false;
@@ -401,8 +413,9 @@ namespace WinThumbsPreloader
                 return uri.AbsolutePath.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase);
             }
 
-            if (uri.Host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
-                uri.Host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            if (allowCdnRedirectHost && (
+                uri.Host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+                uri.Host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase)))
             {
                 return true;
             }
@@ -438,8 +451,11 @@ namespace WinThumbsPreloader
             if (updateResult == null || !updateResult.HasInstallerAsset)
                 throw new InvalidOperationException("No installer download URL is available for this release.");
 
-            if (!IsTrustedGitHubDownloadUrl(updateResult.InstallerDownloadUrl))
+            if (!IsTrustedGitHubDownloadUrl(updateResult.InstallerDownloadUrl, allowCdnRedirectHost: false))
                 throw new InvalidOperationException("Untrusted installer download URL blocked by security policy.");
+
+            if (string.IsNullOrWhiteSpace(updateResult.InstallerSha256))
+                throw new InvalidDataException("Release asset is missing a required SHA-256 checksum.");
 
             string safeFileName = SanitizeInstallerFileName(updateResult.InstallerFileName);
             if (string.IsNullOrWhiteSpace(safeFileName))
@@ -475,7 +491,7 @@ namespace WinThumbsPreloader
                 response.EnsureSuccessStatusCode();
 
                 Uri finalRequestUri = response.RequestMessage?.RequestUri;
-                if (finalRequestUri != null && !IsTrustedGitHubDownloadUrl(finalRequestUri.AbsoluteUri))
+                if (finalRequestUri != null && !IsTrustedGitHubDownloadUrl(finalRequestUri.AbsoluteUri, allowCdnRedirectHost: true))
                 {
                     throw new InvalidOperationException("Redirected download URL is not a trusted GitHub host.");
                 }
@@ -521,7 +537,7 @@ namespace WinThumbsPreloader
                     }
                 }
 
-                ValidateDownloadedExecutable(tempPartPath, updateResult.InstallerSize, updateResult.InstallerSha256);
+                ValidateDownloadedExecutable(tempPartPath, updateResult.InstallerSize, updateResult.InstallerSha256, requireSha256: true);
 
                 File.Move(tempPartPath, destinationPath, overwrite: true);
                 progress?.Report(100);
@@ -544,7 +560,7 @@ namespace WinThumbsPreloader
             }
         }
 
-        public static void ValidateDownloadedExecutable(string filePath, long expectedSize = 0, string expectedSha256 = null)
+        public static void ValidateDownloadedExecutable(string filePath, long expectedSize = 0, string expectedSha256 = null, bool requireSha256 = false)
         {
             var fileInfo = new FileInfo(filePath);
             if (!fileInfo.Exists || fileInfo.Length < 1024)
@@ -580,6 +596,9 @@ namespace WinThumbsPreloader
                 throw new InvalidDataException("Downloaded file has an invalid PE header offset.");
             }
 
+            if (requireSha256 && string.IsNullOrWhiteSpace(expectedSha256))
+                throw new InvalidDataException("Missing required SHA-256 checksum for downloaded update installer.");
+
             if (!string.IsNullOrWhiteSpace(expectedSha256))
             {
                 string normalizedExpected = expectedSha256.Trim();
@@ -600,7 +619,13 @@ namespace WinThumbsPreloader
             }
         }
 
-        public static bool LaunchInstaller(string installerPath, bool restartMinimized, out bool cancelledByUser)
+        public static bool LaunchInstaller(
+            string installerPath,
+            bool restartMinimized,
+            out bool cancelledByUser,
+            long expectedSize = 0,
+            string expectedSha256 = null,
+            bool requireSha256 = false)
         {
             cancelledByUser = false;
 
@@ -608,7 +633,7 @@ namespace WinThumbsPreloader
                 throw new FileNotFoundException("Update installer file was not found.", installerPath);
 
             string fullPath = Path.GetFullPath(installerPath);
-            ValidateDownloadedExecutable(fullPath);
+            ValidateDownloadedExecutable(fullPath, expectedSize, expectedSha256, requireSha256);
 
             var psi = new ProcessStartInfo
             {
@@ -685,7 +710,13 @@ namespace WinThumbsPreloader
                 string installerPath = await DownloadInstallerAsync(updateResult, progress);
 
                 statusCallback?.Invoke("Launching update installer...");
-                if (LaunchInstaller(installerPath, restartMinimized, out bool cancelledByUser))
+                if (LaunchInstaller(
+                    installerPath,
+                    restartMinimized,
+                    out bool cancelledByUser,
+                    updateResult.InstallerSize,
+                    updateResult.InstallerSha256,
+                    requireSha256: true))
                 {
                     Environment.Exit(0);
                     return true;

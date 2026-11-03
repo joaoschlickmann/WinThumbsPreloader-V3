@@ -185,9 +185,13 @@ namespace WinThumbsPreloader.Tests
         public void Security_RejectsUntrustedDownloadUrlsAndReleasePageUrls()
         {
             Assert.True(AutoUpdater.IsTrustedGitHubDownloadUrl(
-                "https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases/download/v3.1.0/WinThumbsPreloader-3.1.0-setup.exe"));
+                "https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases/download/v3.1.0/WinThumbsPreloader-3.1.0-setup.exe",
+                allowCdnRedirectHost: false));
             Assert.True(AutoUpdater.IsTrustedGitHubDownloadUrl(
                 "https://objects.githubusercontent.com/github-production-release-asset-123/WinThumbsPreloader-3.1.0-setup.exe"));
+            Assert.False(AutoUpdater.IsTrustedGitHubDownloadUrl(
+                "https://objects.githubusercontent.com/github-production-release-asset-123/WinThumbsPreloader-3.1.0-setup.exe",
+                allowCdnRedirectHost: false));
 
             Assert.False(AutoUpdater.IsTrustedGitHubDownloadUrl("http://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases/download/v3.1.0/setup.exe"));
             Assert.False(AutoUpdater.IsTrustedGitHubDownloadUrl("https://evil.example.com/WinThumbsPreloader-3.1.0-setup.exe"));
@@ -238,7 +242,10 @@ namespace WinThumbsPreloader.Tests
             string actualSha256 = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
             string wrongSha256 = new string('0', 64);
 
-            AutoUpdater.ValidateDownloadedExecutable(validExe, expectedSize: 2048, expectedSha256: actualSha256);
+            AutoUpdater.ValidateDownloadedExecutable(validExe, expectedSize: 2048, expectedSha256: actualSha256, requireSha256: true);
+
+            Assert.Throws<InvalidDataException>(() =>
+                AutoUpdater.ValidateDownloadedExecutable(validExe, expectedSize: 2048, expectedSha256: null, requireSha256: true));
 
             Assert.Throws<InvalidDataException>(() =>
                 AutoUpdater.ValidateDownloadedExecutable(validExe, expectedSize: 2048, expectedSha256: wrongSha256));
@@ -254,6 +261,34 @@ namespace WinThumbsPreloader.Tests
 
             Assert.Throws<InvalidDataException>(() =>
                 AutoUpdater.ValidateDownloadedExecutable(htmlErrorFile));
+        }
+
+        [Fact]
+        public async System.Threading.Tasks.Task DownloadInstallerAsync_AbuseCases_FailsClosedOnMissingSha256OrDirectCdnUrl()
+        {
+            var missingShaResult = new UpdateCheckResult
+            {
+                State = UpdateState.UpdateAvailable,
+                LatestVersion = "3.1.0",
+                InstallerFileName = "WinThumbsPreloader-3.1.0-setup.exe",
+                InstallerDownloadUrl = "https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases/download/v3.1.0/WinThumbsPreloader-3.1.0-setup.exe",
+                InstallerSha256 = string.Empty
+            };
+
+            await Assert.ThrowsAsync<InvalidDataException>(() =>
+                AutoUpdater.DownloadInstallerAsync(missingShaResult));
+
+            var directCdnUrlResult = new UpdateCheckResult
+            {
+                State = UpdateState.UpdateAvailable,
+                LatestVersion = "3.1.0",
+                InstallerFileName = "WinThumbsPreloader-3.1.0-setup.exe",
+                InstallerDownloadUrl = "https://objects.githubusercontent.com/github-production-release-asset-123/WinThumbsPreloader-3.1.0-setup.exe",
+                InstallerSha256 = new string('a', 64)
+            };
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                AutoUpdater.DownloadInstallerAsync(directCdnUrlResult));
         }
     }
 }
