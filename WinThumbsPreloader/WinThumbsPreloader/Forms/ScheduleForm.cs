@@ -249,7 +249,7 @@ namespace WinThumbsPreloader
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "taskschd.msc",
+                    FileName = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskschd.msc"),
                     UseShellExecute = true
                 });
             }
@@ -373,7 +373,8 @@ namespace WinThumbsPreloader
                 var match = Regex.Match(arguments, @"-m:(\d+)");
                 if (match.Success)
                 {
-                    ThreadsNumericUpDown.Value = int.Parse(match.Groups[1].Value);
+                    if (int.TryParse(match.Groups[1].Value, out int parsedThreads))
+                        ThreadsNumericUpDown.Value = Math.Clamp(parsedThreads, (int)ThreadsNumericUpDown.Minimum, (int)ThreadsNumericUpDown.Maximum);
                 }
                 else if (arguments.Contains("-m"))
                 {
@@ -712,8 +713,8 @@ namespace WinThumbsPreloader
                 var paths = PathsTextBox.Text.Split(["\r\n", "\r", "\n"], StringSplitOptions.RemoveEmptyEntries);
                 foreach (var path in paths)
                 {
-                    var correctedPath = path.Replace('/', '\\').Trim(); // Convert forward slashes to backslashes and trim
-                    uniquePaths.Add(correctedPath);
+                    var correctedPath = path.Replace("\"", string.Empty).Replace('/', '\\').Trim(); // Strip quotes, convert forward slashes to backslashes and trim
+                    if (!string.IsNullOrWhiteSpace(correctedPath) && !correctedPath.StartsWith('-')) uniquePaths.Add(correctedPath);
                 }
             }
             WriteLine($"Unique paths: {string.Join(", ", uniquePaths)}", LoggingFrequency.DebugLogging);

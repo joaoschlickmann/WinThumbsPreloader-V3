@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -158,7 +158,8 @@ namespace WinThumbsPreloader
                 if (!loggerInitialized || logStreamWriter == null)
                     return;
 
-                WriteRawNoLock($"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}: {message}");
+                string sanitizedMessage = (message ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ');
+                WriteRawNoLock($"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}: {sanitizedMessage}");
 
                 if (DateTime.UtcNow - lastMaintenanceUtc >= MaintenanceInterval)
                     RunMaintenanceNoLock(activeLogDirectory);

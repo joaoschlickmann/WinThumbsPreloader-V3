@@ -1948,7 +1948,7 @@ namespace WinThumbsPreloader
 
                     var info = new ProcessStartInfo()
                     {
-                        FileName = "cleanmgr.exe",
+                        FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cleanmgr.exe"),
                         Arguments = $"/sagerun:{sagesetNumber}",
                         UseShellExecute = false
                     };
@@ -2055,7 +2055,9 @@ namespace WinThumbsPreloader
                 Success result = Success.Success;
                 bool allowPartial = (Properties.Settings.Default.BackupRestoreClearSafety == "Allow Partial Copy");
 
-                string rollbackPath = Path.Combine(Path.GetTempPath(), "WinThumbsPreloader_RestoreRollback_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+                string baseLocalAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (string.IsNullOrWhiteSpace(baseLocalAppData)) baseLocalAppData = Path.GetTempPath();
+                string rollbackPath = Path.Combine(baseLocalAppData, "WinThumbsPreloader", "RestoreRollback_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss") + "_" + Guid.NewGuid().ToString("N"));
 
                 var restoredFileNames = new List<string>();
 
@@ -2084,7 +2086,8 @@ namespace WinThumbsPreloader
                     }
 
                     // Always save a rollback snapshot of current Explorer cache using shared read access
-                    Directory.CreateDirectory(rollbackPath);
+                    var rollbackDirInfo = Directory.CreateDirectory(rollbackPath);
+                    if ((rollbackDirInfo.Attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("Rollback directory cannot be a reparse point.");
 
                     foreach (string explorerFile in Directory.GetFiles(explorerPath, "*.db"))
                     {
@@ -2836,7 +2839,7 @@ namespace WinThumbsPreloader
 
                     await Task.Run(() =>
                     {
-                        Process.Start("explorer.exe");
+                        Process.Start(new ProcessStartInfo { FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), UseShellExecute = true });
                     });
                 }
                 else

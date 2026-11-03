@@ -507,8 +507,11 @@ namespace WinThumbsPreloader.Forms
                 if (!File.Exists(filePath))
                     return;
 
+                // Validated via FileInfo below
+                var fileInfo = new FileInfo(filePath);
+                if (!fileInfo.Exists || fileInfo.Length > 1024 * 1024 || (fileInfo.Attributes & FileAttributes.ReparsePoint) != 0) return;
                 string json = File.ReadAllText(filePath);
-                var loaded = JsonSerializer.Deserialize<List<BulkPreset>>(json);
+                var loaded = JsonSerializer.Deserialize<List<BulkPreset>>(json, new JsonSerializerOptions { MaxDepth = 16 });
                 if (loaded != null)
                 {
                     _presets = loaded;

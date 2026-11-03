@@ -243,6 +243,8 @@ namespace WinThumbsPreloader
                     string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
                     if (files != null && files.Length > 0)
                     {
+                        var droppedFileInfo = new FileInfo(files[0]);
+                        if (!droppedFileInfo.Exists || droppedFileInfo.Length > 1024 * 1024 || (droppedFileInfo.Attributes & FileAttributes.ReparsePoint) != 0) return;
                         string fileContent = await File.ReadAllTextAsync(files[0]);
                         WriteLine("File content: " + fileContent, LoggingFrequency.DebugLogging);
                         ExtensionsTextBox.Text = fileContent.Length > 10000 ? fileContent.Substring(0, 10000) : fileContent;
