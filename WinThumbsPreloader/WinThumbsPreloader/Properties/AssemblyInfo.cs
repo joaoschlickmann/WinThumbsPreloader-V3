@@ -15,7 +15,7 @@ using System.Runtime.Versioning;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("WinThumbsPreloader")]
-[assembly: AssemblyCopyright("Copyright © 2018 Dmitry Bruhov, Copyright © 2026 Mutahar Farooq")]
+[assembly: AssemblyCopyright("Copyright © 2018 Dmitry Bruhov, Copyright © 2026 Mutahar Farooq, Copyright © 2026 João Schlickmann")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 [assembly: SupportedOSPlatform("windows")]
