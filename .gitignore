@@ -1,4 +1,4 @@
-﻿################################################################################
+################################################################################
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
@@ -413,3 +413,11 @@ FodyWeavers.xsd
 
 # Graphify local output
 /graphify-out/
+/tasks/
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.snk
