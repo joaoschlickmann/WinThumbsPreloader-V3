@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Net.Http;
@@ -392,14 +392,29 @@ namespace WinThumbsPreloader
         private static bool cacheResetLogged = false;
         private static int _cacheResetCheckInProgress = 0;
 
+        public static bool IsCacheResetCheckInProgress =>
+            System.Threading.Volatile.Read(ref _cacheResetCheckInProgress) != 0;
+
+        public static void ResetCacheResetFlags()
+        {
+            recognizedLogged = false;
+            cacheResetLogged = false;
+        }
+
         public static async Task CheckForCacheReset(bool checkResetRecognized, bool logOnly)
         {
-            if (checkResetRecognized && !recognizedLogged && Settings.Default.ResetRecognized)
+            if (checkResetRecognized && Settings.Default.ResetRecognized)
             {
-                WriteLine("Cache reset already recognized, skipping check", LoggingFrequency.DebugLogging);
-                recognizedLogged = true;
+                if (!recognizedLogged)
+                {
+                    WriteLine("Cache reset already recognized, skipping check", LoggingFrequency.DebugLogging);
+                    recognizedLogged = true;
+                }
                 return;
             }
+
+            if (CacheBackupLock.IsHeldByThisProcess)
+                return;
 
             if (System.Threading.Interlocked.CompareExchange(ref _cacheResetCheckInProgress, 1, 0) != 0)
                 return;
@@ -434,13 +449,12 @@ namespace WinThumbsPreloader
 
                     if (dialogResult == DialogResult.Yes)
                     {
-                        await CacheForm.RestoreThumbsCache(null, true);
-                        if (CacheForm.CompareThumbsCacheSize())
+                        CacheForm.Success restoreResult = await CacheForm.RestoreThumbsCache(null, true);
+                        if (restoreResult != CacheForm.Success.Failure && CacheForm.CompareThumbsCacheSize())
                         {
                             Settings.Default.ResetRecognized = false;
                             Settings.Default.Save();
-                            recognizedLogged = false;
-                            cacheResetLogged = false;
+                            ResetCacheResetFlags();
                             WriteLine("Explorer cache successfully restored", LoggingFrequency.DebugLogging);
                             MessageBox.Show("Explorer cache successfully restored.", "Restore Successful", MessageBoxButtons.OK);
                         }

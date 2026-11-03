@@ -454,13 +454,19 @@ namespace WinThumbsPreloader
             }
         }
 
+        private static bool _autoRestoreFailedUntilCacheGrows = false;
+
         private async void AutoBackupThumbsCache_Tick(object sender, EventArgs e)
         {
             if (IsDisposed || Disposing || autoBackupTimer == null)
                 return;
 
             autoBackupTimer.Stop();
-            if (AutoBackupCheckBox.Checked && TryGetBackupPath(out _) && ExplorerCacheSize() > BackupCacheSize())
+            if (!AboutForm.IsCacheResetCheckInProgress &&
+                !CacheBackupLock.IsHeldByThisProcess &&
+                AutoBackupCheckBox.Checked &&
+                TryGetBackupPath(out _) &&
+                ExplorerCacheSize() > BackupCacheSize())
             {
                 WriteLine("Auto-backup triggered", LoggingFrequency.DebugLogging);
                 await BackupThumbsCacheAsync(null);
@@ -475,10 +481,25 @@ namespace WinThumbsPreloader
                 return;
 
             autoRestoreTimer.Stop();
-            if (AutoRestoreCheckBox.Checked && BackupCacheSize() > ExplorerCacheSize())
+            long backupSize = BackupCacheSize();
+            long explorerSize = ExplorerCacheSize();
+            if (explorerSize >= backupSize)
+            {
+                _autoRestoreFailedUntilCacheGrows = false;
+            }
+            else if (!AboutForm.IsCacheResetCheckInProgress &&
+                     !CacheBackupLock.IsHeldByThisProcess &&
+                     !Settings.Default.ResetRecognized &&
+                     !_autoRestoreFailedUntilCacheGrows &&
+                     AutoRestoreCheckBox.Checked &&
+                     backupSize > explorerSize)
             {
                 WriteLine("Auto-restore triggered", LoggingFrequency.DebugLogging);
-                await RestoreThumbsCache(progressBarRestore, false);
+                Success restoreResult = await RestoreThumbsCache(progressBarRestore, false);
+                if (restoreResult == Success.Failure || ExplorerCacheSize() < BackupCacheSize())
+                {
+                    _autoRestoreFailedUntilCacheGrows = true;
+                }
             }
             if (!IsDisposed && !Disposing)
                 autoRestoreTimer?.Start();
@@ -520,6 +541,20 @@ namespace WinThumbsPreloader
             }
 
             oldBackupSize = backupSize;
+
+            if (backupSize.HasValue &&
+                explorerSize >= backupSize.Value &&
+                !CacheBackupLock.IsHeldByThisProcess &&
+                !AboutForm.IsCacheResetCheckInProgress)
+            {
+                _autoRestoreFailedUntilCacheGrows = false;
+                if (Settings.Default.ResetRecognized)
+                {
+                    Settings.Default.ResetRecognized = false;
+                    Settings.Default.Save();
+                }
+                AboutForm.ResetCacheResetFlags();
+            }
 
             CacheSizeLabel.Text = $"Cache Size: {FormatSize(explorerSize)}";
 
@@ -841,7 +876,7 @@ namespace WinThumbsPreloader
 
             try
             {
-                backupFiles = Directory.GetFiles(normalizedFolder, "*.db", SearchOption.TopDirectoryOnly);
+                backupFiles = Directory.GetFiles(normalizedFolder, "thumbcache_*.db", SearchOption.TopDirectoryOnly);
             }
             catch
             {
@@ -1189,7 +1224,43 @@ namespace WinThumbsPreloader
             RecurseSubdirectories = false
         };
 
-        private static long SumDbFilesSize(string directoryPath, out long maxSingleDbBytes)
+        internal static bool IsThumbCacheDbFileName(ReadOnlySpan<char> fileName)
+        {
+            return fileName.StartsWith("thumbcache_", StringComparison.OrdinalIgnoreCase) &&
+                   fileName.EndsWith(".db", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static void RemoveLegacyIconCacheFilesFromBackup(string backupDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(backupDirectory) || !Directory.Exists(backupDirectory))
+                return;
+
+            try
+            {
+                string normalizedBackup = NormalizeFolderPath(backupDirectory);
+                string normalizedExplorer = NormalizeFolderPath(explorerPath);
+                if (string.Equals(normalizedBackup, normalizedExplorer, StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                foreach (string iconCacheFile in Directory.EnumerateFiles(backupDirectory, "iconcache_*.db", SearchOption.TopDirectoryOnly))
+                {
+                    try
+                    {
+                        File.Delete(iconCacheFile);
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLine("Failed to delete legacy iconcache file from backup: " + ex.Message, LoggingFrequency.DebugLogging);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLine("Failed to enumerate legacy iconcache files in backup: " + ex.Message, LoggingFrequency.DebugLogging);
+            }
+        }
+
+        internal static long SumDbFilesSize(string directoryPath, out long maxSingleDbBytes)
         {
             var sizes = new System.IO.Enumeration.FileSystemEnumerable<long>(
                 directoryPath,
@@ -1197,7 +1268,7 @@ namespace WinThumbsPreloader
                 DbSizeEnumerationOptions)
             {
                 ShouldIncludePredicate = static (ref System.IO.Enumeration.FileSystemEntry entry) =>
-                    !entry.IsDirectory && entry.FileName.EndsWith(".db", StringComparison.OrdinalIgnoreCase)
+                    !entry.IsDirectory && IsThumbCacheDbFileName(entry.FileName)
             };
 
             long total = 0;
@@ -1302,10 +1373,15 @@ namespace WinThumbsPreloader
             {
                 isCacheSizeLargerThanBackup = true;
                 resetLogged = false;
-                if (Settings.Default.ResetRecognized)
+                if (!CacheBackupLock.IsHeldByThisProcess && !AboutForm.IsCacheResetCheckInProgress)
                 {
-                    Settings.Default.ResetRecognized = false;
-                    Settings.Default.Save();
+                    _autoRestoreFailedUntilCacheGrows = false;
+                    if (Settings.Default.ResetRecognized)
+                    {
+                        Settings.Default.ResetRecognized = false;
+                        Settings.Default.Save();
+                    }
+                    AboutForm.ResetCacheResetFlags();
                 }
             }
             else if (explorerCacheSize < backupCacheSize)
@@ -1578,7 +1654,7 @@ namespace WinThumbsPreloader
 
                         Directory.CreateDirectory(tempPath);
 
-                        string[] sourceFiles = Directory.GetFiles(explorerPath, "*.db");
+                        string[] sourceFiles = Directory.GetFiles(explorerPath, "thumbcache_*.db");
 
                         string[] existingFiles = Directory
                             .EnumerateFiles(currentBackupPath, "*.db", SearchOption.TopDirectoryOnly)
@@ -1772,7 +1848,7 @@ namespace WinThumbsPreloader
                             var writtenSet = new HashSet<string>(newBackupFileNamesWritten, StringComparer.OrdinalIgnoreCase);
                             foreach (string oldName in movedOldBackupFileNames)
                             {
-                                if (!writtenSet.Contains(oldName))
+                                if (!writtenSet.Contains(oldName) && IsThumbCacheDbFileName(oldName))
                                 {
                                     string restoreFile = Path.Combine(restorePath, oldName);
                                     string destFile = Path.Combine(currentBackupPath, oldName);
@@ -1917,6 +1993,11 @@ namespace WinThumbsPreloader
             EnsureLocalMachineAutorunDisabled(ThumbnailCacheKey);
             EnsureLocalMachineAutorunDisabled(ThumbnailCacheWow64Key);
             SyncStartupIfEnabledForCurrentExecutable();
+
+            if (TryGetBackupPath(out string currentBackupPath))
+            {
+                RemoveLegacyIconCacheFilesFromBackup(currentBackupPath);
+            }
         }
 
         private static void SyncStartupIfEnabledForCurrentExecutable()
@@ -2142,6 +2223,13 @@ namespace WinThumbsPreloader
                     return Success.Failure;
                 }
 
+                CacheBackupLock.AcquireResult lockResult = CacheBackupLock.TryAcquire(currentBackupPath, out _);
+                if (lockResult != CacheBackupLock.AcquireResult.Acquired)
+                {
+                    WriteLine($"Skipped restore: backup/restore lock is not available ({lockResult}).", LoggingFrequency.GUILogging);
+                    return Success.Failure;
+                }
+
                 Success result = Success.Success;
                 bool allowPartial = (Properties.Settings.Default.BackupRestoreClearSafety == "Allow Partial Copy");
 
@@ -2153,6 +2241,8 @@ namespace WinThumbsPreloader
 
                 try
                 {
+                    RemoveLegacyIconCacheFilesFromBackup(currentBackupPath);
+
                     long backupSize = BackupCacheSize();
                     if (backupSize == 0)
                     {
@@ -2160,7 +2250,7 @@ namespace WinThumbsPreloader
                         return Success.Failure;
                     }
 
-                    string[] backupFiles = Directory.GetFiles(currentBackupPath, "*.db");
+                    string[] backupFiles = Directory.GetFiles(currentBackupPath, "thumbcache_*.db");
                     if (backupFiles.Length == 0)
                     {
                         WriteLine("No backup files found.", LoggingFrequency.GUILogging);
@@ -2179,7 +2269,7 @@ namespace WinThumbsPreloader
                     var rollbackDirInfo = Directory.CreateDirectory(rollbackPath);
                     if ((rollbackDirInfo.Attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("Rollback directory cannot be a reparse point.");
 
-                    foreach (string explorerFile in Directory.GetFiles(explorerPath, "*.db"))
+                    foreach (string explorerFile in Directory.GetFiles(explorerPath, "thumbcache_*.db"))
                     {
                         string fileName = Path.GetFileName(explorerFile);
                         string rollbackFile = Path.Combine(rollbackPath, fileName);
@@ -2286,6 +2376,7 @@ namespace WinThumbsPreloader
                     {
                         await Task.Delay(1000);
                         await RestartExplorerAsync();
+                        await Task.Delay(1500);
                     }
 
                     DeleteDirectory(rollbackPath);
@@ -2330,6 +2421,10 @@ namespace WinThumbsPreloader
                     DeleteDirectory(rollbackPath);
                     return Success.Failure;
                 }
+                finally
+                {
+                    CacheBackupLock.Release();
+                }
             });
         }
 
@@ -2344,7 +2439,7 @@ namespace WinThumbsPreloader
                 // Restore original Explorer cache files from rollback folder using shared ReadWrite
                 if (Directory.Exists(rollbackPath))
                 {
-                    string[] rollbackFiles = Directory.GetFiles(rollbackPath, "*.db")
+                    string[] rollbackFiles = Directory.GetFiles(rollbackPath, "thumbcache_*.db")
                         .OrderBy(static f => Path.GetFileName(f).Equals("thumbcache_idx.db", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
                         .ToArray();
 
@@ -2793,7 +2888,7 @@ namespace WinThumbsPreloader
                     if (!Directory.Exists(explorerPath))
                         return Success.Failure;
 
-                    string[] files = Directory.GetFiles(explorerPath, "*.db");
+                    string[] files = Directory.GetFiles(explorerPath, "thumbcache_*.db");
                     if (files.Length == 0)
                         return Success.Success;
 
@@ -2835,20 +2930,35 @@ namespace WinThumbsPreloader
             });
         }
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
+
         private static async Task CloseExplorerAsync()
         {
-            WriteLine("Closing Explorer...", LoggingFrequency.GUILogging);
+            bool anyClosed = false;
 
             await Task.Run(() =>
             {
                 var processes = Process.GetProcessesByName("explorer");
                 try
                 {
+                    if (processes.Length > 0)
+                    {
+                        WriteLine("Closing Explorer...", LoggingFrequency.GUILogging);
+                    }
+
                     foreach (var process in processes)
                     {
                         try
                         {
-                            process.Kill();
+                            // Exit code 1 prevents winlogon.exe from treating the termination as an unexpected crash (Event ID 1002)
+                            // and immediately respawning explorer.exe mid-restore via userinit.exe.
+                            if (!TerminateProcess(process.Handle, 1))
+                            {
+                                process.Kill();
+                            }
+                            anyClosed = true;
                         }
                         catch (Exception ex)
                         {
@@ -2895,6 +3005,7 @@ namespace WinThumbsPreloader
                             {
                                 dllHost.Kill();
                                 dllHost.WaitForExit(2000);
+                                anyClosed = true;
                             }
                         }
                         catch { }
@@ -2909,8 +3020,11 @@ namespace WinThumbsPreloader
                 }
             });
 
-            // Allow OS to clean up COM shell components
-            await Task.Delay(300);
+            if (anyClosed)
+            {
+                // Allow OS to clean up COM shell components
+                await Task.Delay(300);
+            }
         }
 
         private static async Task RestartExplorerAsync()
@@ -3251,7 +3365,7 @@ namespace WinThumbsPreloader
                     if (!Directory.Exists(explorerPath))
                         return Success.Failure;
 
-                    var files = Directory.GetFiles(explorerPath, "*.db");
+                    var files = Directory.GetFiles(explorerPath, "thumbcache_*.db");
                     int failed = 0;
 
                     foreach (var file in files)
@@ -3566,6 +3680,17 @@ namespace WinThumbsPreloader
 
         private static FileStream _handle;
         private static readonly object _sync = new();
+
+        public static bool IsHeldByThisProcess
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _handle != null;
+                }
+            }
+        }
 
         internal enum AcquireResult
         {
