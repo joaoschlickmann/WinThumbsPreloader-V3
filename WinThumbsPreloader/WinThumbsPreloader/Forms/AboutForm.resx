@@ -194,7 +194,7 @@
     <value>NoControl</value>
   </data>
   <data name="BorderBottom.Location" type="System.Drawing.Point, System.Drawing">
-    <value>0, 360</value>
+    <value>0, 424</value>
   </data>
   <data name="BorderBottom.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 0, 4, 0</value>
@@ -242,8 +242,9 @@
     <value>17, 17</value>
   </metadata>
   <data name="PreloadButton.ToolTip" xml:space="preserve">
-    <value>Selects a folder to preload thumbnails within.
-Holding "SHIFT" will recursively preload thumbnails.</value>
+    <value>Click: Preload Folder
+Shift+Click: Preload Recursively
+Ctrl+Click (or Right-Click): Open Bulk Preloader</value>
   </data>
   <data name="&gt;&gt;PreloadButton.Name" xml:space="preserve">
     <value>PreloadButton</value>
@@ -294,7 +295,7 @@ Holding "SHIFT" will recursively preload thumbnails.</value>
     <value>Bottom</value>
   </data>
   <data name="BottomPanel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>0, 361</value>
+    <value>0, 425</value>
   </data>
   <data name="BottomPanel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 3, 4, 3</value>
@@ -480,20 +481,21 @@ Holding "SHIFT" will recursively preload thumbnails.</value>
     <value>23, 23, 23, 23</value>
   </data>
   <data name="RichTextBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>398, 257</value>
+    <value>398, 321</value>
   </data>
   <data name="RichTextBox.TabIndex" type="System.Int32, mscorlib">
     <value>5</value>
   </data>
   <data name="RichTextBox.Text" xml:space="preserve">
-    <value>To use this app, press "Preload" or right click on a folder to call the context menu and select WinThumbsPreloader &gt; Preload thumbnails in the menu.
+    <value>To use this app, press "Preload" (Shift+Click: Recursive, Ctrl+Click or Right-Click: Bulk Preloader) or right-click a folder in Explorer and select WinThumbsPreloader &gt; Preload thumbnails.
 
 CLI Usage:
-    WinThumbsPreloader.exe [-r -s] &lt;path&gt;
+    WinThumbsPreloader.exe [-r] [-s] [-m[:n]] [-maxinstances:&lt;n&gt;] &lt;path&gt; [path2 ...]
 Options:
     -r Recursively preload thumbnails in nested folders.
     -s Silent mode - don't show a progress dialog.
-    -m / -m&lt;n&gt; / -m:&lt;n&gt; Multi-Threaded mode with optional thread count
+    -m / -m&lt;n&gt; / -m:&lt;n&gt; Multi-Threaded mode with optional thread count.
+    -maxinstances:&lt;n&gt; / -p:&lt;n&gt; Limit concurrent folder preloads.
 
 - File extensions for thumbnail preloading can be modified in the Settings.
 - Hover over or tab to various elements to view helpful tooltips.
@@ -529,7 +531,7 @@ Copyright (c) 2026 João Schlickmann</value>
     <value>18, 12, 18, 12</value>
   </data>
   <data name="ContentPanel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>434, 281</value>
+    <value>434, 345</value>
   </data>
   <data name="ContentPanel.TabIndex" type="System.Int32, mscorlib">
     <value>10</value>
@@ -553,7 +555,7 @@ Copyright (c) 2026 João Schlickmann</value>
     <value>7, 15</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>434, 411</value>
+    <value>434, 475</value>
   </data>
   <data name="$this.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 3, 4, 3</value>

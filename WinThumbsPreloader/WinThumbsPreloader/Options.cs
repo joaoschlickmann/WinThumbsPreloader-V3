@@ -107,10 +107,19 @@ namespace WinThumbsPreloader
                     continue;
                 }
 
-                // -maxinstances:<n>
+                // -maxinstances:<n> or -p:<n>
                 if (arg.StartsWith("-maxinstances:", StringComparison.OrdinalIgnoreCase))
                 {
                     ReadOnlySpan<char> span = arg.AsSpan("-maxinstances:".Length);
+                    if (int.TryParse(span, out int maxInst) && maxInst > 0)
+                        maxParallelInstances = maxInst;
+
+                    continue;
+                }
+
+                if (arg.StartsWith("-p:", StringComparison.OrdinalIgnoreCase))
+                {
+                    ReadOnlySpan<char> span = arg.AsSpan("-p:".Length);
                     if (int.TryParse(span, out int maxInst) && maxInst > 0)
                         maxParallelInstances = maxInst;
 

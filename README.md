@@ -126,7 +126,7 @@ WinThumbsPreloader [options] <path1> [path2 ...]
 | `-s` | **Silent Mode**: Run without showing the progress window. |
 | `-m` | **Multi-threaded (Auto)**: Enable multi-threaded extraction using the configured/default thread count. |
 | `-m:<n>` or `-m<n>` | **Multi-threaded (Custom)**: Enable multi-threaded extraction with `<n>` worker threads (`1`–`256`, e.g., `-m:16` or `-m16`). |
-| `-maxinstances:<n>` | Limit the maximum number of paths processed concurrently when multiple paths are passed (`1`–`32`). |
+| `-maxinstances:<n>` or `-p:<n>` | Limit the maximum number of paths processed concurrently when multiple paths are passed (`1`–`32`). |
 | `-startminimized` | Launch the Cache Manager minimized to the Windows system tray. |
 
 **Examples:**

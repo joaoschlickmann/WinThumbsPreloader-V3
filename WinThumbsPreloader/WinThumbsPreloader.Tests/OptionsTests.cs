@@ -176,5 +176,17 @@ namespace WinThumbsPreloader.Tests
             Assert.True(options.badOrNoArguments);
             Assert.Empty(options.paths);
         }
+
+        [Fact]
+        public void Constructor_WithParallelFlagAlias_SetsMaxParallelInstances()
+        {
+            // Arrange & Act
+            var options = new Options(["-p:3", _tempDir]);
+
+            // Assert
+            Assert.False(options.badOrNoArguments);
+            Assert.Equal(3, options.maxParallelInstances);
+            Assert.Single(options.paths);
+        }
     }
 }
