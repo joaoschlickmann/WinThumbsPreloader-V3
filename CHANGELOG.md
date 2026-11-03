@@ -4,6 +4,15 @@ All notable changes to **WinThumbsPreloader** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.2] - 2026-11-03
+
+### Fixed
+- **Automatic Settings Migration Across Updates (`Settings`)**: Added `LastUpgradedVersion` tracking and automatic `EnsureSettingsUpgraded()` migration inside the `Settings` constructor (before static `Logger` initialization), invoking `Upgrade()` and overlaying prior `<Version>\user.config` settings in ascending version order so custom backup paths, intervals, and preferences are never reset when installing a new release.
+- **Silent Update Auto-Relaunch & Windows Startup Sync (`AutoUpdater`, `installer.iss`, `CacheForm`)**: Removed `skipifsilent` from the Inno Setup `postinstall` `[Run]` entry so silent in-app updates reliably relaunch `WinThumbsPreloader.exe` as the interactive user even when UAC elevation strips custom command-line switches, persisted a short-lived `.post_update_launch` marker to preserve minimized tray state across UAC restarts, wired the system tray **Start with Windows** menu item, and ensured Windows `StartupApproved\Run` state is re-enabled when startup is active.
+- **Minimize to System Tray on Window Close (`AboutForm`, `CacheForm`, `Program`)**: Closing the main window (`AboutForm` or top-level `CacheForm`) via the **Close** button or title-bar **X** now keeps the application running in the system tray with background thumbnail cache auto-backup/auto-restore timers active instead of terminating the process (holding `Shift` switches **Close** to **Exit** for immediate termination), and added a **Main Window...** entry to the tray context menu.
+
+---
+
 ## [3.1.1] - 2026-11-03
 
 ### Security
