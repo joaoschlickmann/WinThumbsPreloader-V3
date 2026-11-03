@@ -452,9 +452,13 @@ namespace WinThumbsPreloader
 
                     if (dialogResult == DialogResult.Yes)
                     {
-                        await CacheForm.RestoreThumbsCache(null, false);
+                        await CacheForm.RestoreThumbsCache(null, true);
                         if (CacheForm.CompareThumbsCacheSize())
                         {
+                            Settings.Default.ResetRecognized = false;
+                            Settings.Default.Save();
+                            recognizedLogged = false;
+                            cacheResetLogged = false;
                             WriteLine("Explorer cache successfully restored", LoggingFrequency.DebugLogging);
                             MessageBox.Show("Explorer cache successfully restored.", "Restore Successful", MessageBoxButtons.OK);
                         }

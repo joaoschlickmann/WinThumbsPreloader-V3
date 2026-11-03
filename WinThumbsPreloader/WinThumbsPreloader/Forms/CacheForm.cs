@@ -178,18 +178,16 @@ namespace WinThumbsPreloader
             if (explorerSize < backupSize.Value && Settings.Default.ResetRecognized == false)
             {
                 OutputTextBox.Text = "Explorer cache has been reset.";
-                Settings.Default.ResetRecognized = true;
             }
-
-            if (explorerSize < backupSize.Value && Settings.Default.ResetRecognized == true)
+            else if (explorerSize < backupSize.Value && Settings.Default.ResetRecognized == true)
             {
                 if (OutputTextBox.Text != "Explorer cache cleared.")
                     OutputTextBox.Text = "Backup cache larger than explorer cache.";
             }
-
-            if (explorerSize >= backupSize.Value && Settings.Default.ResetRecognized == true)
+            else if (explorerSize >= backupSize.Value && Settings.Default.ResetRecognized == true)
             {
                 Settings.Default.ResetRecognized = false;
+                Settings.Default.Save();
             }
         }
 
@@ -1141,6 +1139,11 @@ namespace WinThumbsPreloader
             {
                 isCacheSizeLargerThanBackup = true;
                 resetLogged = false;
+                if (Settings.Default.ResetRecognized)
+                {
+                    Settings.Default.ResetRecognized = false;
+                    Settings.Default.Save();
+                }
             }
             else if (explorerCacheSize < backupCacheSize)
             {
@@ -1432,14 +1435,21 @@ namespace WinThumbsPreloader
                         await UpdateProgressBarAsync(progressBar, 0);
 
                         int copyFailures = 0;
+                        int thumbCacheCopyFailures = 0;
 
-                        foreach (string src in sourceFiles)
+                        // Copy thumbcache_*.db stream files before thumbcache_idx.db to minimize tear window
+                        string[] orderedSourceFiles = sourceFiles
+                            .OrderBy(static f => Path.GetFileName(f).Equals("thumbcache_idx.db", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                            .ToArray();
+
+                        foreach (string src in orderedSourceFiles)
                         {
-                            string dest = Path.Combine(tempPath, Path.GetFileName(src));
+                            string fileName = Path.GetFileName(src);
+                            string dest = Path.Combine(tempPath, fileName);
 
                             try
                             {
-                                File.Copy(src, dest, true);
+                                CopyFileSharedRead(src, dest);
                             }
                             catch (Exception ex)
                             {
@@ -1449,6 +1459,8 @@ namespace WinThumbsPreloader
                                     sawPermissionFailure = true;
 
                                 copyFailures++;
+                                if (fileName.StartsWith("thumbcache_", StringComparison.OrdinalIgnoreCase))
+                                    thumbCacheCopyFailures++;
 
                                 if (!allowPartial)
                                 {
@@ -1476,9 +1488,13 @@ namespace WinThumbsPreloader
 
                         if (allowPartial)
                         {
-                            if (successfulCopies == 0)
+                            if (successfulCopies == 0 || thumbCacheCopyFailures > 0)
                             {
-                                WriteLine("No files could be copied. Backup failed.", LoggingFrequency.GUILogging);
+                                WriteLine(
+                                    thumbCacheCopyFailures > 0
+                                        ? "One or more thumbcache_*.db files could not be copied; aborting backup to prevent desynchronized cache backup."
+                                        : "No files could be copied. Backup failed.",
+                                    LoggingFrequency.GUILogging);
 
                                 DeleteDirectory(tempPath);
                                 DeleteDirectory(restorePath);
@@ -1490,13 +1506,16 @@ namespace WinThumbsPreloader
                                         : CacheOperationFailureReason.NoFilesCopied,
                                     sawPermissionFailure
                                         ? "Backup failed because Windows denied permission to copy the cache files."
-                                        : "Backup failed because no cache files could be copied."
+                                        : "Backup failed because a complete set of thumbnail cache files could not be copied."
                                 );
                             }
 
                             if (copyFailures > 0)
                                 result = Success.PartialSuccess;
                         }
+
+                        // Reconcile headers and index pointers in staged backup to eliminate any live-copy torn writes
+                        SanitizeThumbCacheDirectory(tempPath);
 
                         if (existingFiles.Length > 0)
                             Directory.CreateDirectory(restorePath);
@@ -1582,6 +1601,26 @@ namespace WinThumbsPreloader
 
                             completed++;
                             await UpdateProgressBarAsync(progressBar, completed * 100 / totalSteps);
+                        }
+
+                        // In partial mode, preserve any previous backup files that were not replaced in this pass
+                        if (allowPartial && Directory.Exists(restorePath))
+                        {
+                            var writtenSet = new HashSet<string>(newBackupFileNamesWritten, StringComparer.OrdinalIgnoreCase);
+                            foreach (string oldName in movedOldBackupFileNames)
+                            {
+                                if (!writtenSet.Contains(oldName))
+                                {
+                                    string restoreFile = Path.Combine(restorePath, oldName);
+                                    string destFile = Path.Combine(currentBackupPath, oldName);
+                                    try
+                                    {
+                                        if (File.Exists(restoreFile) && !File.Exists(destFile))
+                                            File.Move(restoreFile, destFile, overwrite: false);
+                                    }
+                                    catch { }
+                                }
+                            }
                         }
 
                         DeleteDirectory(tempPath);
@@ -1928,112 +1967,57 @@ namespace WinThumbsPreloader
                         return Success.Failure;
                     }
 
+                    // Sanitize backup directory headers and index pointers before restoring to Explorer
+                    SanitizeThumbCacheDirectory(currentBackupPath);
+
                     if (forceRestore)
                     {
                         await CloseExplorerAsync();
                     }
 
-                    // Copy current explorer cache to temporary restore folder
-                    if (!allowPartial)
+                    // Always save a rollback snapshot of current Explorer cache using shared read access
+                    Directory.CreateDirectory(rollbackPath);
+
+                    foreach (string explorerFile in Directory.GetFiles(explorerPath, "*.db"))
                     {
-                        Directory.CreateDirectory(rollbackPath);
+                        string fileName = Path.GetFileName(explorerFile);
+                        string rollbackFile = Path.Combine(rollbackPath, fileName);
 
-                        foreach (string explorerFile in Directory.GetFiles(explorerPath, "*.db"))
+                        try
                         {
-                            string fileName = Path.GetFileName(explorerFile);
-                            string rollbackFile = Path.Combine(rollbackPath, fileName);
-
-                            try
+                            CopyFileSharedRead(explorerFile, rollbackFile);
+                        }
+                        catch (Exception ex)
+                        {
+                            WriteLine("Failed to create restore rollback copy: " + ex.Message, LoggingFrequency.GUILogging);
+                            if (!allowPartial)
                             {
-                                File.Copy(explorerFile, rollbackFile, true);
-                            }
-                            catch (Exception ex)
-                            {
-                                WriteLine("Failed to create restore rollback copy: " + ex.Message, LoggingFrequency.GUILogging);
                                 DeleteDirectory(rollbackPath);
-                                return Success.Failure;
-                            }
-                        }
-                    }
-
-                    // Delete current explorer cache using selected method
-                    try
-                    {
-                        string mode = Properties.Settings.Default.ExplorerCacheDeletionMethod;
-                        Success deleteResult;
-
-                        if (mode == "Disk Cleanup")
-                        {
-                            WriteLine("Using Disk Cleanup deletion method.", LoggingFrequency.GUILogging);
-                            deleteResult = await RunThumbnailDiskCleanupAsync();
-                        }
-                        else // Manual Deletion
-                        {
-                            WriteLine("Using Manual Deletion method.", LoggingFrequency.GUILogging);
-                            deleteResult = await DeleteExplorerThumbsCacheAsync(forceRestore);
-                        }
-
-                        if (!allowPartial)
-                        {
-                            if (deleteResult != Success.Success)
-                            {
-                                WriteLine("Strict restore aborted because cache deletion was not fully successful.", LoggingFrequency.GUILogging);
-
-                                RollbackRestore(explorerPath, rollbackPath, restoredFileNames);
-
                                 if (forceRestore)
                                 {
                                     await Task.Delay(1000);
                                     await RestartExplorerAsync();
                                 }
-
-                                DeleteDirectory(rollbackPath);
                                 return Success.Failure;
                             }
                         }
-                        else
-                        {
-                            if (deleteResult == Success.Failure)
-                            {
-                                result = Success.Failure;
-                            }
-                            else if (deleteResult == Success.PartialSuccess && result != Success.Failure)
-                            {
-                                result = Success.PartialSuccess;
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        WriteLine($"Error deleting existing cache: {ex.Message}", LoggingFrequency.GUILogging);
-
-                        if (!allowPartial)
-                        {
-                            RollbackRestore(explorerPath, rollbackPath, restoredFileNames);
-
-                            if (forceRestore)
-                            {
-                                await Task.Delay(1000);
-                                await RestartExplorerAsync();
-                            }
-
-                            DeleteDirectory(rollbackPath);
-                            return Success.Failure;
-                        }
-
-                        result = Success.Failure;
                     }
 
                     // Ensure explorer cache folder exists
                     Directory.CreateDirectory(explorerPath);
 
-                    // Restore files
-                    int totalFiles = backupFiles.Length;
+                    // Restore files: write thumbcache_*.db stream files first and thumbcache_idx.db last
+                    string[] orderedBackupFiles = backupFiles
+                        .OrderBy(static f => Path.GetFileName(f).Equals("thumbcache_idx.db", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                        .ToArray();
+
+                    int totalFiles = orderedBackupFiles.Length;
                     int failureCount = 0;
+                    int thumbCacheFailureCount = 0;
 
                     await UpdateProgressBarAsync(progressBar, 0);
 
-                    foreach (string file in backupFiles)
+                    foreach (string file in orderedBackupFiles)
                     {
                         bool copied = false;
                         int retryCount = 0;
@@ -2049,7 +2033,7 @@ namespace WinThumbsPreloader
                                     await CloseExplorerAsync();
                                 }
 
-                                File.Copy(file, destination, true);
+                                CopyFileToDestinationSharedReadWrite(file, destination);
                                 copied = true;
                                 restoredFileNames.Add(fileName);
                             }
@@ -2066,7 +2050,13 @@ namespace WinThumbsPreloader
                             WriteLine($"Failed to restore {fileName} after 3 retries.", LoggingFrequency.GUILogging);
                             failureCount++;
 
-                            if (!allowPartial)
+                            bool isThumbCacheFile = fileName.StartsWith("thumbcache_", StringComparison.OrdinalIgnoreCase);
+                            if (isThumbCacheFile)
+                                thumbCacheFailureCount++;
+
+                            // Never allow a partial thumbcache_*.db restore: a desynchronized thumbcache_idx.db / thumbcache_*.db
+                            // set causes Windows thumbcache.dll to immediately reset all 14 cache files to 24 bytes.
+                            if (!allowPartial || isThumbCacheFile)
                             {
                                 RollbackRestore(explorerPath, rollbackPath, restoredFileNames);
                                 HideProgressBar(progressBar);
@@ -2100,7 +2090,7 @@ namespace WinThumbsPreloader
                     DeleteDirectory(rollbackPath);
 
                     // Set result based on failures
-                    if (failureCount == totalFiles)
+                    if (failureCount == totalFiles || thumbCacheFailureCount > 0)
                     {
                         result = Success.Failure;
                     }
@@ -2122,10 +2112,7 @@ namespace WinThumbsPreloader
                 {
                     WriteLine("Restore exception: " + ex.Message, LoggingFrequency.GUILogging);
 
-                    if (!allowPartial)
-                    {
-                        RollbackRestore(explorerPath, rollbackPath, restoredFileNames);
-                    }
+                    RollbackRestore(explorerPath, rollbackPath, restoredFileNames);
 
                     HideProgressBar(progressBar);
 
@@ -2153,35 +2140,42 @@ namespace WinThumbsPreloader
             {
                 Directory.CreateDirectory(explorerPath);
 
-                // Remove only the files that were restored during this attempt
-                foreach (string fileName in restoredFileNames)
-                {
-                    string explorerFile = Path.Combine(explorerPath, fileName);
-
-                    try
-                    {
-                        if (File.Exists(explorerFile))
-                        {
-                            File.Delete(explorerFile);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        WriteLine("Rollback restore failed to delete restored file: " + ex.Message, LoggingFrequency.DebugLogging);
-                    }
-                }
-
-                // Restore original Explorer cache files from rollback folder
+                // Restore original Explorer cache files from rollback folder using shared ReadWrite
                 if (Directory.Exists(rollbackPath))
                 {
-                    foreach (string rollbackFile in Directory.GetFiles(rollbackPath, "*.db"))
+                    string[] rollbackFiles = Directory.GetFiles(rollbackPath, "*.db")
+                        .OrderBy(static f => Path.GetFileName(f).Equals("thumbcache_idx.db", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                        .ToArray();
+
+                    var rollbackFileNames = new HashSet<string>(
+                        rollbackFiles.Select(Path.GetFileName),
+                        StringComparer.OrdinalIgnoreCase);
+
+                    foreach (string fileName in restoredFileNames)
+                    {
+                        if (!rollbackFileNames.Contains(fileName))
+                        {
+                            string explorerFile = Path.Combine(explorerPath, fileName);
+                            try
+                            {
+                                if (File.Exists(explorerFile))
+                                    File.Delete(explorerFile);
+                            }
+                            catch (Exception ex)
+                            {
+                                WriteLine("Rollback restore failed to delete restored file: " + ex.Message, LoggingFrequency.DebugLogging);
+                            }
+                        }
+                    }
+
+                    foreach (string rollbackFile in rollbackFiles)
                     {
                         string fileName = Path.GetFileName(rollbackFile);
                         string explorerFile = Path.Combine(explorerPath, fileName);
 
                         try
                         {
-                            File.Copy(rollbackFile, explorerFile, true);
+                            CopyFileToDestinationSharedReadWrite(rollbackFile, explorerFile);
                         }
                         catch (Exception ex)
                         {
@@ -2194,6 +2188,399 @@ namespace WinThumbsPreloader
             {
                 WriteLine("RollbackRestore exception: " + ex.Message, LoggingFrequency.DebugLogging);
             }
+        }
+
+        public static void CopyFileSharedRead(string sourcePath, string destinationPath)
+        {
+            DateTime lastWriteUtc = File.GetLastWriteTimeUtc(sourcePath);
+
+            using (var srcStream = new FileStream(
+                sourcePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 1048576,
+                FileOptions.SequentialScan))
+            using (var dstStream = new FileStream(
+                destinationPath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 1048576))
+            {
+                srcStream.CopyTo(dstStream, 1048576);
+                dstStream.Flush();
+            }
+
+            try
+            {
+                File.SetLastWriteTimeUtc(destinationPath, lastWriteUtc);
+            }
+            catch { }
+        }
+
+        public static void CopyFileToDestinationSharedReadWrite(string sourcePath, string destinationPath)
+        {
+            DateTime lastWriteUtc = File.GetLastWriteTimeUtc(sourcePath);
+
+            using (var srcStream = new FileStream(
+                sourcePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 1048576,
+                FileOptions.SequentialScan))
+            using (var dstStream = new FileStream(
+                destinationPath,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 1048576))
+            {
+                dstStream.Position = 0;
+                srcStream.CopyTo(dstStream, 1048576);
+                if (dstStream.Length != srcStream.Length)
+                {
+                    dstStream.SetLength(srcStream.Length);
+                }
+                dstStream.Flush();
+            }
+
+            try
+            {
+                File.SetLastWriteTimeUtc(destinationPath, lastWriteUtc);
+            }
+            catch { }
+        }
+
+        private static readonly string[] ThumbCacheStreamNames =
+        [
+            "16", "32", "48", "96", "256", "768", "1280", "1920", "2560",
+            "sr", "wide", "exif", "wide_alternate", "custom_stream"
+        ];
+
+        private static readonly ulong[] ThumbCacheCrc64Table = BuildThumbCacheCrc64Table();
+
+        private static ulong[] BuildThumbCacheCrc64Table()
+        {
+            var table = new ulong[256];
+            const ulong poly = 0x92C64265D32139A4UL;
+            for (int i = 0; i < 256; i++)
+            {
+                ulong crc = (ulong)i;
+                for (int b = 0; b < 8; b++)
+                {
+                    crc = (crc & 1UL) != 0 ? (crc >> 1) ^ poly : (crc >> 1);
+                }
+                table[i] = crc;
+            }
+            return table;
+        }
+
+        internal static ulong ComputeThumbCacheCrc64(ReadOnlySpan<byte> buffer)
+        {
+            ulong crc = ulong.MaxValue;
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                byte idx = (byte)((byte)crc ^ buffer[i]);
+                crc = (crc >> 8) ^ ThumbCacheCrc64Table[idx];
+            }
+            return crc;
+        }
+
+        /// <summary>
+        /// Validates and repairs Windows 10/11 <c>thumbcache_*.db</c> headers and <c>thumbcache_idx.db</c> stream pointers
+        /// so that live-copy torn writes (stale <c>FirstFreeEntryOffset</c> or out-of-sync index pointers/counts) cannot
+        /// trigger <c>thumbcache.dll</c> to reset the cache (<c>0x80041221</c>).
+        /// </summary>
+        public static bool SanitizeThumbCacheDirectory(string directoryPath)
+        {
+            if (string.IsNullOrWhiteSpace(directoryPath) || !Directory.Exists(directoryPath))
+                return false;
+
+            bool modified = false;
+
+            try
+            {
+                var activeBlocksByStream = new Dictionary<uint, ulong>[ThumbCacheStreamNames.Length];
+                var streamSizes = new uint[ThumbCacheStreamNames.Length];
+                var streamExists = new bool[ThumbCacheStreamNames.Length];
+                Span<byte> hdr = stackalloc byte[24];
+                Span<byte> freeBytes = stackalloc byte[4];
+
+                for (int s = 0; s < ThumbCacheStreamNames.Length; s++)
+                {
+                    activeBlocksByStream[s] = new Dictionary<uint, ulong>();
+                    string streamPath = Path.Combine(directoryPath, $"thumbcache_{ThumbCacheStreamNames[s]}.db");
+                    if (!File.Exists(streamPath))
+                        continue;
+
+                    DateTime lastWriteUtc = File.GetLastWriteTimeUtc(streamPath);
+                    long fileLength;
+                    uint firstEntryOffset;
+                    uint headerFreeOffset;
+                    uint lastFreeOffset = 0;
+                    bool streamModified = false;
+
+                    using (var fs = new FileStream(streamPath, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+                    {
+                        fileLength = fs.Length;
+                        if (fileLength < 24 || fileLength > uint.MaxValue)
+                            continue;
+
+                        streamExists[s] = true;
+                        streamSizes[s] = (uint)fileLength;
+
+                        if (fs.Read(hdr) != 24)
+                            continue;
+
+                        if (hdr[0] != (byte)'C' || hdr[1] != (byte)'M' || hdr[2] != (byte)'M' || hdr[3] != (byte)'M')
+                            continue;
+
+                        firstEntryOffset = BitConverter.ToUInt32(hdr.Slice(16, 4));
+                        headerFreeOffset = BitConverter.ToUInt32(hdr.Slice(20, 4));
+
+                        if (fileLength == 24)
+                        {
+                            lastFreeOffset = 24;
+                        }
+                        else
+                        {
+                            byte[] blockHdr = new byte[0x38];
+                            byte[] magicCheck = new byte[4];
+                            long pos = firstEntryOffset;
+
+                            while (pos >= 24 && pos + 0x38 <= fileLength)
+                            {
+                                fs.Position = pos;
+                                if (fs.Read(blockHdr, 0, 0x38) != 0x38)
+                                    break;
+
+                                if (blockHdr[0] != (byte)'C' || blockHdr[1] != (byte)'M' || blockHdr[2] != (byte)'M' || blockHdr[3] != (byte)'M')
+                                    break;
+
+                                uint cbEntry = BitConverter.ToUInt32(blockHdr, 4);
+                                if (cbEntry < 0x38 || pos + cbEntry > fileLength)
+                                    break;
+
+                                ulong ullHash = BitConverter.ToUInt64(blockHdr, 8);
+                                uint cbId = BitConverter.ToUInt32(blockHdr, 16);
+
+                                if (ullHash == 0 && cbId == 0)
+                                {
+                                    lastFreeOffset = (uint)pos;
+                                }
+                                else if (ullHash != 0)
+                                {
+                                    activeBlocksByStream[s][(uint)pos] = ullHash;
+                                }
+
+                                long next = pos + cbEntry;
+                                long rem = next % 8;
+                                if (rem != 0)
+                                {
+                                    long aligned = next + (8 - rem);
+                                    if (next + 4 <= fileLength)
+                                    {
+                                        fs.Position = next;
+                                        if (fs.Read(magicCheck, 0, 4) == 4 &&
+                                            magicCheck[0] == (byte)'C' && magicCheck[1] == (byte)'M' &&
+                                            magicCheck[2] == (byte)'M' && magicCheck[3] == (byte)'M')
+                                        {
+                                            pos = next;
+                                        }
+                                        else
+                                        {
+                                            pos = aligned;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        pos = aligned;
+                                    }
+                                }
+                                else
+                                {
+                                    pos = next;
+                                }
+                            }
+                        }
+
+                        if (lastFreeOffset >= 24 && headerFreeOffset != lastFreeOffset)
+                        {
+                            fs.Position = 20;
+                            BitConverter.TryWriteBytes(freeBytes, lastFreeOffset);
+                            fs.Write(freeBytes);
+                            fs.Flush();
+                            streamModified = true;
+                            modified = true;
+                        }
+                    }
+
+                    if (streamModified)
+                    {
+                        try { File.SetLastWriteTimeUtc(streamPath, lastWriteUtc); } catch { }
+                    }
+                }
+
+                string idxPath = Path.Combine(directoryPath, "thumbcache_idx.db");
+                if (!File.Exists(idxPath))
+                    return modified;
+
+                DateTime idxLastWriteUtc = File.GetLastWriteTimeUtc(idxPath);
+                byte[] idxBytes;
+                using (var idxFs = new FileStream(idxPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    idxBytes = new byte[idxFs.Length];
+                    int totalRead = 0;
+                    while (totalRead < idxBytes.Length)
+                    {
+                        int r = idxFs.Read(idxBytes, totalRead, idxBytes.Length - totalRead);
+                        if (r <= 0) break;
+                        totalRead += r;
+                    }
+                }
+
+                if (idxBytes.Length < 144 ||
+                    idxBytes[4] != (byte)'I' || idxBytes[5] != (byte)'M' || idxBytes[6] != (byte)'M' || idxBytes[7] != (byte)'M')
+                {
+                    return modified;
+                }
+
+                uint totalSlots = BitConverter.ToUInt32(idxBytes, 24);
+                if (144L + (long)totalSlots * 72L > idxBytes.Length)
+                    return modified;
+
+                bool idxModified = false;
+                uint usedSlots = 0;
+                var streamCounts = new uint[ThumbCacheStreamNames.Length];
+                var referencedOffsets = new HashSet<uint>[ThumbCacheStreamNames.Length];
+                for (int s = 0; s < ThumbCacheStreamNames.Length; s++)
+                    referencedOffsets[s] = new HashSet<uint>();
+
+                for (uint i = 0; i < totalSlots; i++)
+                {
+                    int slotBase = 144 + (int)(i * 72);
+                    ulong slotHash = BitConverter.ToUInt64(idxBytes, slotBase);
+
+                    if (slotHash == 0 || slotHash == ulong.MaxValue)
+                    {
+                        for (int s = 0; s < ThumbCacheStreamNames.Length; s++)
+                        {
+                            int offPos = slotBase + 16 + s * 4;
+                            if (BitConverter.ToUInt32(idxBytes, offPos) != uint.MaxValue)
+                            {
+                                BitConverter.TryWriteBytes(idxBytes.AsSpan(offPos, 4), uint.MaxValue);
+                                idxModified = true;
+                            }
+                        }
+                        continue;
+                    }
+
+                    usedSlots++;
+
+                    for (int s = 0; s < ThumbCacheStreamNames.Length; s++)
+                    {
+                        int offPos = slotBase + 16 + s * 4;
+                        uint off = BitConverter.ToUInt32(idxBytes, offPos);
+                        if (off == uint.MaxValue)
+                            continue;
+
+                        if (!streamExists[s])
+                        {
+                            continue;
+                        }
+
+                        if (off >= 24 &&
+                            activeBlocksByStream[s].TryGetValue(off, out ulong blockHash) &&
+                            blockHash == slotHash &&
+                            referencedOffsets[s].Add(off))
+                        {
+                            streamCounts[s]++;
+                        }
+                        else
+                        {
+                            BitConverter.TryWriteBytes(idxBytes.AsSpan(offPos, 4), uint.MaxValue);
+                            idxModified = true;
+                        }
+                    }
+                }
+
+                // Mark any unreferenced active CMMM blocks in stream files as valid free blocks (with valid HeaderCrc64)
+                for (int s = 0; s < ThumbCacheStreamNames.Length; s++)
+                {
+                    if (!streamExists[s])
+                        continue;
+
+                    if (activeBlocksByStream[s].Count > referencedOffsets[s].Count)
+                    {
+                        string streamPath = Path.Combine(directoryPath, $"thumbcache_{ThumbCacheStreamNames[s]}.db");
+                        DateTime lw = File.GetLastWriteTimeUtc(streamPath);
+                        using (var fs = new FileStream(streamPath, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+                        {
+                            byte[] hdr56 = new byte[0x38];
+                            foreach (uint blockOff in activeBlocksByStream[s].Keys)
+                            {
+                                if (referencedOffsets[s].Contains(blockOff))
+                                    continue;
+
+                                fs.Position = blockOff;
+                                if (fs.Read(hdr56, 0, 0x38) == 0x38)
+                                {
+                                    Array.Clear(hdr56, 8, 40); // Zero +0x08..+0x2F
+                                    ulong crc = ComputeThumbCacheCrc64(hdr56.AsSpan(0, 0x30));
+                                    BitConverter.TryWriteBytes(hdr56.AsSpan(0x30, 8), crc);
+                                    fs.Position = blockOff;
+                                    fs.Write(hdr56, 0, 0x38);
+                                    modified = true;
+                                }
+                            }
+                            fs.Flush();
+                        }
+                        try { File.SetLastWriteTimeUtc(streamPath, lw); } catch { }
+                    }
+
+                    int sizePos = 28 + s * 4;
+                    if (BitConverter.ToUInt32(idxBytes, sizePos) != streamSizes[s])
+                    {
+                        BitConverter.TryWriteBytes(idxBytes.AsSpan(sizePos, 4), streamSizes[s]);
+                        idxModified = true;
+                    }
+
+                    int countPos = 84 + s * 4;
+                    if (BitConverter.ToUInt32(idxBytes, countPos) != streamCounts[s])
+                    {
+                        BitConverter.TryWriteBytes(idxBytes.AsSpan(countPos, 4), streamCounts[s]);
+                        idxModified = true;
+                    }
+                }
+
+                if (BitConverter.ToUInt32(idxBytes, 20) != usedSlots)
+                {
+                    BitConverter.TryWriteBytes(idxBytes.AsSpan(20, 4), usedSlots);
+                    idxModified = true;
+                }
+
+                if (idxModified)
+                {
+                    using (var idxFs = new FileStream(idxPath, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+                    {
+                        idxFs.Position = 0;
+                        idxFs.Write(idxBytes, 0, idxBytes.Length);
+                        if (idxFs.Length != idxBytes.Length)
+                            idxFs.SetLength(idxBytes.Length);
+                        idxFs.Flush();
+                    }
+                    try { File.SetLastWriteTimeUtc(idxPath, idxLastWriteUtc); } catch { }
+                    modified = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLine("SanitizeThumbCacheDirectory warning: " + ex.Message, LoggingFrequency.DebugLogging);
+            }
+
+            return modified;
         }
 
         private static async Task<Success> DeleteExplorerThumbsCacheAsync(bool forceRestore)
@@ -2251,15 +2638,9 @@ namespace WinThumbsPreloader
         {
             WriteLine("Closing Explorer...", LoggingFrequency.GUILogging);
 
-            var processes = Process.GetProcessesByName("explorer");
-
-            if (processes.Length == 0)
-            {
-                return;
-            }
-
             await Task.Run(() =>
             {
+                var processes = Process.GetProcessesByName("explorer");
                 try
                 {
                     foreach (var process in processes)
@@ -2274,7 +2655,6 @@ namespace WinThumbsPreloader
                         }
                     }
 
-                    // Wait for all explorer processes to exit
                     foreach (var process in processes)
                     {
                         try
@@ -2289,6 +2669,41 @@ namespace WinThumbsPreloader
                     foreach (var process in processes)
                     {
                         process.Dispose();
+                    }
+                }
+
+                // Also stop any COM surrogate dllhost.exe instances hosting thumbcache.dll
+                var dllHosts = Process.GetProcessesByName("dllhost");
+                try
+                {
+                    foreach (var dllHost in dllHosts)
+                    {
+                        try
+                        {
+                            bool hasThumbCache = false;
+                            foreach (ProcessModule module in dllHost.Modules)
+                            {
+                                if (string.Equals(module.ModuleName, "thumbcache.dll", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    hasThumbCache = true;
+                                    break;
+                                }
+                            }
+
+                            if (hasThumbCache)
+                            {
+                                dllHost.Kill();
+                                dllHost.WaitForExit(2000);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                finally
+                {
+                    foreach (var dllHost in dllHosts)
+                    {
+                        dllHost.Dispose();
                     }
                 }
             });
