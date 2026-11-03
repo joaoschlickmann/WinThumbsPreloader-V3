@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -16,6 +16,8 @@ namespace WinThumbsPreloader
     static class Program
     {
         public static Options AppOptions { get; private set; }
+        public static AboutForm MainAboutForm { get; internal set; }
+        public static CacheForm TrayCacheForm { get; internal set; }
 
         public static int activeInstances = 0;
         public static bool adminElevationAttempted = false;
@@ -33,6 +35,10 @@ namespace WinThumbsPreloader
             WriteLine("Arguments: " + string.Join(" ", arguments), LoggingFrequency.PreloaderLogging);
 
             Options options = new Options(arguments);
+            if ((arguments == null || arguments.Length == 0) && AutoUpdater.ConsumePostUpdateLaunchMinimized())
+            {
+                options.startMinimized = true;
+            }
             AppOptions = options;
 
             WriteLine($"Options: Bad or no arguments = {options.badOrNoArguments}, Include nested directories = {options.includeNestedDirectories}, Multithreaded = {options.multiThreaded}, Silent mode = {options.silentMode}, Start minimized = {options.startMinimized}, Thread count = {options.threadCount}, Max parallel instances = {options.maxParallelInstances}", LoggingFrequency.PreloaderLogging);
@@ -70,7 +76,8 @@ namespace WinThumbsPreloader
             Application.EnableVisualStyles();
             Application.SetHighDpiMode(HighDpiMode.SystemAware);
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new CacheForm());
+            TrayCacheForm = new CacheForm();
+            Application.Run(TrayCacheForm);
         }
 
         private static void OpenAboutForm()
@@ -79,7 +86,49 @@ namespace WinThumbsPreloader
             Application.EnableVisualStyles();
             Application.SetHighDpiMode(HighDpiMode.SystemAware);
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new AboutForm());
+            MainAboutForm = new AboutForm();
+            Application.Run(MainAboutForm);
+        }
+
+        public static void MinimizeAboutFormToTray(AboutForm aboutForm)
+        {
+            if (aboutForm != null && !aboutForm.IsDisposed)
+            {
+                MainAboutForm = aboutForm;
+                aboutForm.ShowInTaskbar = false;
+                aboutForm.Hide();
+            }
+
+            if (TrayCacheForm == null || TrayCacheForm.IsDisposed)
+            {
+                TrayCacheForm = new CacheForm();
+            }
+
+            TrayCacheForm.RefreshSettingsState();
+            TrayCacheForm.MinimizeToTray();
+        }
+
+        public static void ShowMainAboutForm()
+        {
+            if (TrayCacheForm != null && !TrayCacheForm.IsDisposed)
+            {
+                if (TrayCacheForm.Visible)
+                {
+                    TrayCacheForm.ShowInTaskbar = false;
+                    TrayCacheForm.Hide();
+                }
+                TrayCacheForm.SetTrayIconVisible(false);
+            }
+
+            if (MainAboutForm == null || MainAboutForm.IsDisposed)
+            {
+                MainAboutForm = new AboutForm();
+            }
+
+            MainAboutForm.Show();
+            MainAboutForm.WindowState = FormWindowState.Normal;
+            MainAboutForm.ShowInTaskbar = true;
+            MainAboutForm.Activate();
         }
 
         private static void RunPreloaderMode(Options options)

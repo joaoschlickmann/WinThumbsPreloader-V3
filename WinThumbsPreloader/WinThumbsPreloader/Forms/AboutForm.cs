@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Net.Http;
@@ -19,6 +19,7 @@ namespace WinThumbsPreloader
             this.KeyDown += AboutForm_KeyDown;
             this.KeyUp += AboutForm_KeyUp;
             this.Activated += AboutForm_Activated;
+            this.FormClosing += AboutForm_FormClosing;
             this.KeyPreview = true;
             this.Shown += AboutForm_Shown;
             InitializePreloadContextMenu();
@@ -36,6 +37,9 @@ namespace WinThumbsPreloader
             PreloadTooltip.SetToolTip(
                 PreloadButton,
                 "Click: Preload Folder\r\nShift+Click: Preload Recursively\r\nCtrl+Click (or Right-Click): Open Bulk Preloader");
+            PreloadTooltip.SetToolTip(
+                CloseButton,
+                "Minimizes WinThumbsPreloader to the system tray.\r\nHolding \"SHIFT\" will exit the application.");
         }
 
         private void AboutForm_Load(object sender, EventArgs e)
@@ -145,16 +149,48 @@ namespace WinThumbsPreloader
 
         private void CloseButton_Click(object sender, EventArgs e)
         {
-            WriteLine("Exiting application from AboutForm", LoggingFrequency.GUILogging);
-            if (Program.activeInstances > 0)
+            if (CloseButton.Text == "Exit" || (Control.ModifierKeys & Keys.Shift) == Keys.Shift)
             {
-                this.Hide();
-                Program.formOpen = false;
+                WriteLine("Exiting application from AboutForm", LoggingFrequency.GUILogging);
+                if (Program.activeInstances > 0)
+                {
+                    this.Hide();
+                    Program.formOpen = false;
+                }
+                else
+                {
+                    Environment.Exit(0);
+                }
+                return;
             }
-            else
+
+            Close();
+        }
+
+        private void AboutForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (e.CloseReason != CloseReason.UserClosing)
+                return;
+
+            if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
             {
-                Environment.Exit(0);
+                WriteLine("Exiting application from AboutForm", LoggingFrequency.GUILogging);
+                if (Program.activeInstances > 0)
+                {
+                    e.Cancel = true;
+                    this.Hide();
+                    Program.formOpen = false;
+                }
+                else
+                {
+                    Environment.Exit(0);
+                }
+                return;
             }
+
+            WriteLine("Minimizing application to system tray from AboutForm", LoggingFrequency.GUILogging);
+            e.Cancel = true;
+            Program.MinimizeAboutFormToTray(this);
         }
 
         private void LicenceButton_Click(object sender, EventArgs e)
@@ -311,29 +347,14 @@ namespace WinThumbsPreloader
 
         private void AboutForm_Activated(object sender, EventArgs e)
         {
-            if (Control.ModifierKeys == Keys.Shift)
-            {
-                PreloadButton.Text = "Recursively";
-            }
-            else if (Control.ModifierKeys == Keys.Control)
-            {
-                PreloadButton.Text = "Bulk Preload";
-            }
-            else
-            {
-                PreloadButton.Text = "Preload";
-            }
+            UpdateModifierButtonText();
         }
 
         private void AboutForm_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.ShiftKey)
+            if (e.KeyCode == Keys.ShiftKey || e.KeyCode == Keys.ControlKey)
             {
-                PreloadButton.Text = "Recursively";
-            }
-            else if (e.KeyCode == Keys.ControlKey)
-            {
-                PreloadButton.Text = "Bulk Preload";
+                UpdateModifierButtonText();
             }
         }
 
@@ -341,12 +362,29 @@ namespace WinThumbsPreloader
         {
             if (e.KeyCode == Keys.ShiftKey || e.KeyCode == Keys.ControlKey)
             {
-                if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
-                    PreloadButton.Text = "Recursively";
-                else if ((Control.ModifierKeys & Keys.Control) == Keys.Control)
-                    PreloadButton.Text = "Bulk Preload";
-                else
-                    PreloadButton.Text = "Preload";
+                UpdateModifierButtonText();
+            }
+        }
+
+        private void UpdateModifierButtonText()
+        {
+            bool shiftPressed = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
+            bool ctrlPressed = (Control.ModifierKeys & Keys.Control) == Keys.Control;
+
+            if (shiftPressed)
+            {
+                PreloadButton.Text = "Recursively";
+                CloseButton.Text = "Exit";
+            }
+            else if (ctrlPressed)
+            {
+                PreloadButton.Text = "Bulk Preload";
+                CloseButton.Text = "Close";
+            }
+            else
+            {
+                PreloadButton.Text = "Preload";
+                CloseButton.Text = "Close";
             }
         }
 

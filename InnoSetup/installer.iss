@@ -74,9 +74,8 @@ Source: "{#MyAppReleaseDirectory}\Microsoft.Win32.TaskScheduler.dll"; DestDir: "
 Name: "{commonprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppFilename}"
 
 [Run]
-Filename: "{app}\{#MyAppFilename}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent shellexec
-Filename: "{app}\{#MyAppFilename}"; Flags: nowait shellexec skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCH')
-Filename: "{app}\{#MyAppFilename}"; Parameters: "-startminimized"; Flags: nowait shellexec skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
+Filename: "{app}\{#MyAppFilename}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall shellexec; Check: not CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
+Filename: "{app}\{#MyAppFilename}"; Parameters: "-startminimized"; Flags: nowait postinstall shellexec skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
 
 [Registry]
 ; ---- Directory context menu ----

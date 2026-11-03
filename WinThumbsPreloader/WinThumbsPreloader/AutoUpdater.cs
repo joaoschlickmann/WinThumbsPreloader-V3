@@ -645,6 +645,8 @@ namespace WinThumbsPreloader
             psi.ArgumentList.Add("/CLOSEAPPLICATIONS");
             psi.ArgumentList.Add(restartMinimized ? "/AUTOLAUNCHMINIMIZED" : "/AUTOLAUNCH");
 
+            WritePostUpdateLaunchMarker(restartMinimized);
+
             try
             {
                 WriteLine($"Launching update installer: {psi.FileName}", LoggingFrequency.GUILogging);
@@ -653,8 +655,106 @@ namespace WinThumbsPreloader
             }
             catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
             {
+                DeletePostUpdateLaunchMarker();
                 cancelledByUser = true;
                 WriteLine("User cancelled UAC prompt for update installer.", LoggingFrequency.GUILogging);
+                return false;
+            }
+            catch
+            {
+                DeletePostUpdateLaunchMarker();
+                throw;
+            }
+        }
+
+        private const string PostUpdateLaunchMarkerFileName = ".post_update_launch";
+        private static readonly TimeSpan PostUpdateLaunchMarkerMaxAge = TimeSpan.FromMinutes(10);
+
+        public static string GetDefaultPostUpdateLaunchMarkerPath()
+        {
+            string baseLocalAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(baseLocalAppData))
+                baseLocalAppData = Path.GetTempPath();
+
+            return Path.Combine(baseLocalAppData, "WinThumbsPreloader", "Updates", PostUpdateLaunchMarkerFileName);
+        }
+
+        public static void WritePostUpdateLaunchMarker(bool restartMinimized, string markerFilePath = null)
+        {
+            try
+            {
+                string path = string.IsNullOrWhiteSpace(markerFilePath)
+                    ? GetDefaultPostUpdateLaunchMarkerPath()
+                    : markerFilePath;
+
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrWhiteSpace(dir))
+                {
+                    DirectoryInfo dirInfo = Directory.CreateDirectory(dir);
+                    if ((dirInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                        return;
+                }
+
+                string mode = restartMinimized ? "minimized" : "normal";
+                string payload = $"{mode}|{DateTime.UtcNow.Ticks}";
+                File.WriteAllText(path, payload, Encoding.UTF8);
+            }
+            catch
+            {
+                // Ignore marker write failures
+            }
+        }
+
+        public static void DeletePostUpdateLaunchMarker(string markerFilePath = null)
+        {
+            try
+            {
+                string path = string.IsNullOrWhiteSpace(markerFilePath)
+                    ? GetDefaultPostUpdateLaunchMarkerPath()
+                    : markerFilePath;
+
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+                // Ignore marker cleanup failures
+            }
+        }
+
+        public static bool ConsumePostUpdateLaunchMinimized(string markerFilePath = null, DateTime? nowUtc = null)
+        {
+            try
+            {
+                string path = string.IsNullOrWhiteSpace(markerFilePath)
+                    ? GetDefaultPostUpdateLaunchMarkerPath()
+                    : markerFilePath;
+
+                if (!File.Exists(path))
+                    return false;
+
+                string content = File.ReadAllText(path, Encoding.UTF8).Trim();
+                File.Delete(path);
+
+                string[] parts = content.Split('|');
+                if (parts.Length < 2)
+                    return false;
+
+                string mode = parts[0].Trim();
+                if (!long.TryParse(parts[1].Trim(), out long ticks) || ticks <= 0)
+                    return false;
+
+                DateTime writtenUtc = new DateTime(ticks, DateTimeKind.Utc);
+                DateTime currentUtc = nowUtc ?? DateTime.UtcNow;
+                TimeSpan age = currentUtc - writtenUtc;
+
+                if (age < TimeSpan.FromMinutes(-1) || age > PostUpdateLaunchMarkerMaxAge)
+                    return false;
+
+                return string.Equals(mode, "minimized", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
                 return false;
             }
         }

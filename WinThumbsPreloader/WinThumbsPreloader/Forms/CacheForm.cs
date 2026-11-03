@@ -33,14 +33,18 @@ namespace WinThumbsPreloader
         public int cacheUpdateInterval;
         public int autoBackupInterval;
         public int autoRestoreInterval;
+        private ToolStripMenuItem mainWindowToolStripMenuItem;
         private ToolStripMenuItem checkForUpdatesToolStripMenuItem;
         private UpdateCheckResult _trayUpdateResult;
 
         public CacheForm()
         {
             InitializeComponent();
-            InitializeTrayUpdateMenu();
+            this.Icon = Resources.MainIcon;
+            notifyIcon1.Icon = Resources.MainIcon;
             notifyIcon1.Visible = false;
+            InitializeTrayUpdateMenu();
+            RefreshSettingsState();
             CheckForStartMinimized(null, null);
             OutputTextBox_Initialize(null, null);
             this.KeyDown += CacheForm_KeyDown;
@@ -52,7 +56,6 @@ namespace WinThumbsPreloader
             this.Shown += CacheForm_Shown;
             notifyIcon1.DoubleClick += notifyIcon1_DoubleClick;
             notifyIcon1.BalloonTipClicked += notifyIcon1_BalloonTipClicked;
-            notifyIcon1.Icon = Resources.MainIcon;
             CacheForm.BackupInfoChanged += CacheForm_BackupInfoChanged;
 
             SetIntervals();
@@ -63,6 +66,22 @@ namespace WinThumbsPreloader
 
         private void InitializeTrayUpdateMenu()
         {
+            startWithWindowsToolStripMenuItem.Click -= startWithWindowsToolStripMenuItem_Click;
+            startWithWindowsToolStripMenuItem.Click += startWithWindowsToolStripMenuItem_Click;
+
+            mainWindowToolStripMenuItem = new ToolStripMenuItem("Main Window...");
+            mainWindowToolStripMenuItem.Click += mainWindowToolStripMenuItem_Click;
+
+            int openIndex = contextMenuStrip1.Items.IndexOf(openToolStripMenuItem);
+            if (openIndex >= 0)
+            {
+                contextMenuStrip1.Items.Insert(openIndex + 1, mainWindowToolStripMenuItem);
+            }
+            else
+            {
+                contextMenuStrip1.Items.Insert(0, mainWindowToolStripMenuItem);
+            }
+
             checkForUpdatesToolStripMenuItem = new ToolStripMenuItem("Check for Updates...");
             checkForUpdatesToolStripMenuItem.Click += checkForUpdatesToolStripMenuItem_Click;
 
@@ -79,8 +98,24 @@ namespace WinThumbsPreloader
             }
         }
 
+        private void mainWindowToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Program.ShowMainAboutForm();
+        }
+
+        private void startWithWindowsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            StartWithWindowsCheckBox.Checked = !StartWithWindowsCheckBox.Checked;
+            startWithWindowsToolStripMenuItem.Checked = StartWithWindowsCheckBox.Checked;
+        }
+
         private async void CacheForm_Shown(object sender, EventArgs e)
         {
+            if (Program.AppOptions?.startMinimized == true && WindowState == FormWindowState.Minimized)
+            {
+                MinimizeToTray();
+            }
+
             await AboutForm.CheckForCacheReset(true, false);
 
             if (Program.AppOptions?.startMinimized == true)
@@ -113,9 +148,9 @@ namespace WinThumbsPreloader
                 else if (!silentIfUpToDate)
                 {
                     await AutoUpdater.PromptAndInstallUpdateAsync(
-                        this,
+                        Visible ? this : null,
                         _trayUpdateResult,
-                        restartMinimized: WindowState == FormWindowState.Minimized,
+                        restartMinimized: WindowState == FormWindowState.Minimized || !Visible,
                         status => SetCacheOutput(status));
                 }
             }
@@ -124,7 +159,7 @@ namespace WinThumbsPreloader
                 if (_trayUpdateResult.State == UpdateState.Error)
                 {
                     MessageBox.Show(
-                        this,
+                        Visible ? this : null,
                         Resources.AboutForm_WinThumbsPreloader_UpdateCheckFailed,
                         "Update Check",
                         MessageBoxButtons.OK,
@@ -133,7 +168,7 @@ namespace WinThumbsPreloader
                 else
                 {
                     MessageBox.Show(
-                        this,
+                        Visible ? this : null,
                         $"{Resources.AboutForm_WinThumbsPreloader_IsUpToDate} (v{Application.ProductVersion}).",
                         "Update Check",
                         MessageBoxButtons.OK,
@@ -147,9 +182,9 @@ namespace WinThumbsPreloader
             if (_trayUpdateResult != null && _trayUpdateResult.IsUpdateAvailable)
             {
                 await AutoUpdater.PromptAndInstallUpdateAsync(
-                    this,
+                    Visible ? this : null,
                     _trayUpdateResult,
-                    restartMinimized: WindowState == FormWindowState.Minimized,
+                    restartMinimized: WindowState == FormWindowState.Minimized || !Visible,
                     status => SetCacheOutput(status));
             }
         }
@@ -159,9 +194,9 @@ namespace WinThumbsPreloader
             if (_trayUpdateResult != null && _trayUpdateResult.IsUpdateAvailable)
             {
                 await AutoUpdater.PromptAndInstallUpdateAsync(
-                    this,
+                    Visible ? this : null,
                     _trayUpdateResult,
-                    restartMinimized: WindowState == FormWindowState.Minimized,
+                    restartMinimized: WindowState == FormWindowState.Minimized || !Visible,
                     status => SetCacheOutput(status));
             }
             else
@@ -173,14 +208,34 @@ namespace WinThumbsPreloader
         private void CacheForm_Load(object sender, EventArgs e)
         {
             this.Icon = Resources.MainIcon;
-            AlertCheckBox.Checked = Settings.Default.ThumbsResetAlert;
-            AutoBackupCheckBox.Checked = Settings.Default.AutoBackupThumbs;
-            AutoRestoreCheckBox.Checked = Settings.Default.AutoRestoreThumbs;
-            StartWithWindowsCheckBox.Checked = Settings.Default.StartWithWindows;
-            toggleAutoBackupToolStripMenuItem.Checked = AutoBackupCheckBox.Checked;
-            toggleAutoRestoreToolStripMenuItem.Checked = AutoRestoreCheckBox.Checked;
-            toggleCacheResetAlertToolStripMenuItem.Checked = AlertCheckBox.Checked;
-            startWithWindowsToolStripMenuItem.Checked = StartWithWindowsCheckBox.Checked;
+            RefreshSettingsState();
+        }
+
+        public void RefreshSettingsState()
+        {
+            AlertCheckBox.CheckedChanged -= AlertCheckBox_CheckedChanged;
+            AutoBackupCheckBox.CheckedChanged -= AutoBackupCheckBox_CheckedChanged;
+            AutoRestoreCheckBox.CheckedChanged -= AutoRestoreCheckBox_CheckedChanged;
+            StartWithWindowsCheckBox.CheckedChanged -= StartWithWindowsCheckBox_CheckedChanged;
+
+            try
+            {
+                AlertCheckBox.Checked = Settings.Default.ThumbsResetAlert;
+                AutoBackupCheckBox.Checked = Settings.Default.AutoBackupThumbs;
+                AutoRestoreCheckBox.Checked = Settings.Default.AutoRestoreThumbs;
+                StartWithWindowsCheckBox.Checked = Settings.Default.StartWithWindows;
+                toggleAutoBackupToolStripMenuItem.Checked = AutoBackupCheckBox.Checked;
+                toggleAutoRestoreToolStripMenuItem.Checked = AutoRestoreCheckBox.Checked;
+                toggleCacheResetAlertToolStripMenuItem.Checked = AlertCheckBox.Checked;
+                startWithWindowsToolStripMenuItem.Checked = StartWithWindowsCheckBox.Checked;
+            }
+            finally
+            {
+                AlertCheckBox.CheckedChanged += AlertCheckBox_CheckedChanged;
+                AutoBackupCheckBox.CheckedChanged += AutoBackupCheckBox_CheckedChanged;
+                AutoRestoreCheckBox.CheckedChanged += AutoRestoreCheckBox_CheckedChanged;
+                StartWithWindowsCheckBox.CheckedChanged += StartWithWindowsCheckBox_CheckedChanged;
+            }
 
             UpdateAutoBackupRestoreAvailability();
         }
@@ -1868,9 +1923,6 @@ namespace WinThumbsPreloader
         {
             try
             {
-                if (!Settings.Default.StartWithWindows)
-                    return;
-
                 string exePath = Application.ExecutablePath;
                 if (string.IsNullOrWhiteSpace(exePath) ||
                     !Path.GetFileName(exePath).Equals("WinThumbsPreloader.exe", StringComparison.OrdinalIgnoreCase))
@@ -1878,16 +1930,54 @@ namespace WinThumbsPreloader
                     return;
                 }
 
-                string expectedValue = $"\"{exePath}\" -startminimized";
                 using RegistryKey runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
-                if (runKey != null && !string.Equals(runKey.GetValue(RunKeyName) as string, expectedValue, StringComparison.OrdinalIgnoreCase))
+                if (runKey == null)
+                    return;
+
+                if (Settings.Default.StartWithWindows)
                 {
-                    runKey.SetValue(RunKeyName, expectedValue);
+                    string expectedValue = $"\"{exePath}\" -startminimized";
+                    if (!string.Equals(runKey.GetValue(RunKeyName) as string, expectedValue, StringComparison.OrdinalIgnoreCase))
+                    {
+                        runKey.SetValue(RunKeyName, expectedValue);
+                    }
+                    EnsureStartupApprovedInWindows();
+                }
+                else
+                {
+                    if (runKey.GetValue(RunKeyName) != null)
+                    {
+                        runKey.DeleteValue(RunKeyName, false);
+                    }
                 }
             }
             catch
             {
                 // Ignore if registry access is restricted
+            }
+        }
+
+        private static void EnsureStartupApprovedInWindows()
+        {
+            try
+            {
+                using RegistryKey approvedKey = Registry.CurrentUser.OpenSubKey(StartupApprovedRunKeyPath, writable: true);
+                if (approvedKey == null)
+                    return;
+
+                if (approvedKey.GetValue(RunKeyName) is byte[] existingBytes &&
+                    existingBytes.Length > 0 &&
+                    existingBytes[0] != 2 &&
+                    existingBytes[0] != 6)
+                {
+                    byte[] enabledBytes = new byte[12];
+                    enabledBytes[0] = 2;
+                    approvedKey.SetValue(RunKeyName, enabledBytes, RegistryValueKind.Binary);
+                }
+            }
+            catch
+            {
+                // Ignore if StartupApproved registry key is not accessible
             }
         }
 
@@ -2864,6 +2954,7 @@ namespace WinThumbsPreloader
         {
             Settings.Default.ThumbsResetAlert = AlertCheckBox.Checked;
             Settings.Default.Save();
+            toggleCacheResetAlertToolStripMenuItem.Checked = AlertCheckBox.Checked;
         }
 
         [DllImport("user32.dll")]
@@ -3291,12 +3382,14 @@ namespace WinThumbsPreloader
             }
             finally
             {
+                startWithWindowsToolStripMenuItem.Checked = StartWithWindowsCheckBox.Checked;
                 StartWithWindowsCheckBox.CheckedChanged += StartWithWindowsCheckBox_CheckedChanged;
             }
         }
 
         private const string RunKeyName = "WinThumbsPreloader";
         private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string StartupApprovedRunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
         public static bool SetStartup(bool startWithWindows)
         {
@@ -3316,6 +3409,7 @@ namespace WinThumbsPreloader
                         string executablePath = $"\"{Application.ExecutablePath}\" -startminimized";
                         WriteLine("Executable Path: " + executablePath, LoggingFrequency.DebugLogging);
                         runKey.SetValue(RunKeyName, executablePath);
+                        EnsureStartupApprovedInWindows();
                         return true;
                     }
                     catch (Exception ex)
@@ -3356,8 +3450,14 @@ namespace WinThumbsPreloader
 
         private void CloseButton_Click(object sender, EventArgs e)
         {
-            if (CloseButton.Text == "Close") Close();
-            else if (CloseButton.Text == "Exit") Environment.Exit(0);
+            if (CloseButton.Text == "Exit" || (Control.ModifierKeys & Keys.Shift) == Keys.Shift)
+            {
+                WriteLine("Exiting application from cache form", LoggingFrequency.GUILogging);
+                Environment.Exit(0);
+                return;
+            }
+
+            Close();
         }
 
         private void CacheForm_Resize(object sender, EventArgs e)
@@ -3365,29 +3465,69 @@ namespace WinThumbsPreloader
             if (this.WindowState == FormWindowState.Minimized)
             {
                 ShowInTaskbar = false;
-                notifyIcon1.Visible = true;
+                SetTrayIconVisible(true);
             }
             else if (this.WindowState == FormWindowState.Normal)
             {
                 ShowInTaskbar = true;
-                notifyIcon1.Visible = false;
+                SetTrayIconVisible(false);
             }
+        }
+
+        public void SetTrayIconVisible(bool visible)
+        {
+            if (notifyIcon1 != null)
+            {
+                if (visible && notifyIcon1.Icon == null)
+                    notifyIcon1.Icon = Resources.MainIcon;
+
+                notifyIcon1.Visible = visible;
+            }
+        }
+
+        public void MinimizeToTray()
+        {
+            this.WindowState = FormWindowState.Minimized;
+            this.ShowInTaskbar = false;
+            SetTrayIconVisible(true);
+            if (this.Visible && !this.Modal)
+            {
+                this.Hide();
+            }
+        }
+
+        public void RestoreFromTray()
+        {
+            RefreshSettingsState();
+            this.Show();
+            this.WindowState = FormWindowState.Normal;
+            this.ShowInTaskbar = true;
+            this.Activate();
+            SetTrayIconVisible(false);
         }
 
         private void notifyIcon1_DoubleClick(object sender, EventArgs e)
         {
-            WindowState = FormWindowState.Normal;
-            ShowInTaskbar = true;
-            Activate(); // Ensures correct focus
-            notifyIcon1.Visible = false;
+            RestoreFromTray();
         }
 
         private void CacheForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (e.CloseReason == CloseReason.UserClosing && (Control.ModifierKeys & Keys.Shift) == Keys.Shift)
+            if (e.CloseReason != CloseReason.UserClosing)
+                return;
+
+            if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
             {
                 WriteLine("Exiting application from cache form", LoggingFrequency.GUILogging);
                 Environment.Exit(0); // Exit the entire application
+                return;
+            }
+
+            if (!this.Modal && this.Owner == null)
+            {
+                WriteLine("Minimizing cache form to system tray", LoggingFrequency.GUILogging);
+                e.Cancel = true;
+                MinimizeToTray();
             }
         }
 
@@ -3398,9 +3538,7 @@ namespace WinThumbsPreloader
 
         private void StartMinimized(object sender, EventArgs e)
         {
-            this.WindowState = FormWindowState.Minimized;
-            this.ShowInTaskbar = false;
-            notifyIcon1.Visible = true;
+            MinimizeToTray();
         }
 
         private void SetCacheOutput(string message)
