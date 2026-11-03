@@ -93,111 +93,52 @@ namespace WinThumbsPreloader
             MessageBox.Show(this, "The provided path is invalid or does not exist." + Environment.NewLine + Environment.NewLine + "Path: " + displayPath, "Invalid Path", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
-        private enum UpdateState
-        {
-            Updated,
-            UpdateAvailable,
-            BetaAvailable,
-            Error
-        }
+        private UpdateCheckResult _latestUpdateResult;
+        private bool _isUpdating;
 
         private async void CheckForUpdates()
         {
             WriteLine("Checking for updates", LoggingFrequency.DebugLogging);
-            UpdateState updateState = await Task.Run(async () =>
-            {
-                try
-                {
-                    using (HttpClient client = new HttpClient())
-                    {
-                        client.DefaultRequestHeaders.UserAgent.ParseAdd("WinThumbPreloader");
-                        string GitHubApiResponse = await client.GetStringAsync("https://api.github.com/repos/joaoschlickmann/WinThumbsPreloader-V3/releases");
-                        var match = Regex.Match(GitHubApiResponse, @"""tag_name"":\s*""v([\d\.]+(-beta\d+)?)""");
-                        if (!match.Success)
-                            return UpdateState.Updated;
-
-                        string latestVersionString = match.Groups[1].Captures[0].ToString();
-                        WriteLine("LatestVersionString: " + latestVersionString, LoggingFrequency.DebugLogging);
-
-                        Version currentNumericVersion = new Version(Regex.Match(Application.ProductVersion, @"(\d+\.\d+\.\d+)").Value);
-                        WriteLine("Current version: " + currentNumericVersion, LoggingFrequency.DebugLogging);
-                        Version latestNumericVersion = new Version(Regex.Match(latestVersionString, @"(\d+\.\d+\.\d+)").Value);
-                        WriteLine("Latest version: " + latestNumericVersion, LoggingFrequency.DebugLogging);
-
-                        var currentBetaMatch = Regex.Match(Application.ProductVersion, @"-beta(\d+)");
-                        WriteLine("CurrentBetaMatch: " + currentBetaMatch, LoggingFrequency.DebugLogging);
-                        var latestBetaMatch = Regex.Match(latestVersionString, @"-beta(\d+)");
-                        WriteLine("LatestBetaMatch: " + latestBetaMatch, LoggingFrequency.DebugLogging);
-                        bool isCurrentBeta = currentBetaMatch.Success;
-                        WriteLine("IsCurrentBeta: " + isCurrentBeta, LoggingFrequency.DebugLogging);
-                        bool isLatestBeta = latestBetaMatch.Success;
-                        WriteLine("IsLatestBeta: " + isLatestBeta, LoggingFrequency.DebugLogging);
-                        int currentBetaNumber = isCurrentBeta ? int.Parse(currentBetaMatch.Groups[1].Value) : 0;
-                        WriteLine("CurrentBetaNumber: " + currentBetaNumber, LoggingFrequency.DebugLogging);
-                        int latestBetaNumber = isLatestBeta ? int.Parse(latestBetaMatch.Groups[1].Value) : 0;
-                        WriteLine("LatestBetaNumber: " + latestBetaNumber, LoggingFrequency.DebugLogging);
-
-                        // If latest version is NOT a beta and current version IS a beta or is older, then update is available
-                        if (!isLatestBeta && (isCurrentBeta && currentNumericVersion == latestNumericVersion))
-                        {
-                            WriteLine("Update available", LoggingFrequency.GUILogging);
-                            return UpdateState.UpdateAvailable;
-                        }
-                        // If both current and latest versions are betas, check their beta numbers
-                        else if (isCurrentBeta && isLatestBeta)
-                        {
-                            if (currentBetaNumber < latestBetaNumber)
-                            {
-                                WriteLine("Beta available", LoggingFrequency.GUILogging);
-                                return UpdateState.BetaAvailable;
-                            }
-                            else
-                            {
-                                WriteLine("Up to date", LoggingFrequency.GUILogging);
-                                return UpdateState.Updated;
-                            }
-                        }
-                        else if (currentNumericVersion < latestNumericVersion)
-                        {
-                            WriteLine("Update available", LoggingFrequency.GUILogging);
-                            return UpdateState.UpdateAvailable;
-                        }
-                        else
-                        {
-                            WriteLine("Up to date", LoggingFrequency.GUILogging);
-                            return UpdateState.Updated;
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    WriteLine("Failed to check for updates: " + e.Message, LoggingFrequency.GUILogging);
-                    return UpdateState.Error;
-                }
-            });
+            _latestUpdateResult = await AutoUpdater.CheckForUpdatesAsync();
 
             if (IsDisposed || Disposing)
                 return;
 
-            switch (updateState)
+            ApplyUpdateLabelState(_latestUpdateResult);
+        }
+
+        private void ApplyUpdateLabelState(UpdateCheckResult result)
+        {
+            if (result == null)
+                return;
+
+            switch (result.State)
             {
                 case UpdateState.Updated:
                     UpdateLabel.Text = Resources.AboutForm_WinThumbsPreloader_IsUpToDate;
+                    UpdateLabel.ForeColor = SystemColors.ControlDarkDark;
+                    UpdateLabel.Font = new Font(UpdateLabel.Font.Name, UpdateLabel.Font.SizeInPoints, FontStyle.Regular);
+                    UpdateLabel.Cursor = Cursors.Default;
                     break;
                 case UpdateState.Error:
                     UpdateLabel.Text = Resources.AboutForm_WinThumbsPreloader_UpdateCheckFailed;
+                    UpdateLabel.ForeColor = SystemColors.ControlDarkDark;
+                    UpdateLabel.Font = new Font(UpdateLabel.Font.Name, UpdateLabel.Font.SizeInPoints, FontStyle.Regular);
+                    UpdateLabel.Cursor = Cursors.Default;
                     break;
                 case UpdateState.UpdateAvailable:
-                    UpdateLabel.Text = Resources.AboutForm_WinThumbsPreloader_NewVersionAvailable;
+                    UpdateLabel.Text = $"{Resources.AboutForm_WinThumbsPreloader_NewVersionAvailable} (v{result.LatestVersion})";
                     UpdateLabel.ForeColor = Color.FromArgb(0, 102, 204);
                     UpdateLabel.Font = new Font(UpdateLabel.Font.Name, UpdateLabel.Font.SizeInPoints, FontStyle.Underline);
                     UpdateLabel.Cursor = Cursors.Hand;
+                    PreloadTooltip.SetToolTip(UpdateLabel, "Click to download and install the update automatically");
                     break;
                 case UpdateState.BetaAvailable:
-                    UpdateLabel.Text = Resources.AboutForm_WinThumbsPreloader_BetaVersionAvailable;
+                    UpdateLabel.Text = $"{Resources.AboutForm_WinThumbsPreloader_BetaVersionAvailable} (v{result.LatestVersion})";
                     UpdateLabel.ForeColor = Color.FromArgb(0, 102, 204);
                     UpdateLabel.Font = new Font(UpdateLabel.Font.Name, UpdateLabel.Font.SizeInPoints, FontStyle.Underline);
                     UpdateLabel.Cursor = Cursors.Hand;
+                    PreloadTooltip.SetToolTip(UpdateLabel, "Click to download and install the beta update automatically");
                     break;
             }
         }
@@ -247,33 +188,36 @@ namespace WinThumbsPreloader
             }
         }
 
-        private void UpdateLabel_Click(object sender, EventArgs e)
+        private async void UpdateLabel_Click(object sender, EventArgs e)
         {
-            WriteLine("Opening GitHub link from UpdateLabel", LoggingFrequency.GUILogging);
-            string url = "";
+            if (_isUpdating || _latestUpdateResult == null || !_latestUpdateResult.IsUpdateAvailable)
+                return;
 
-            if (UpdateLabel.Text == Resources.AboutForm_WinThumbsPreloader_NewVersionAvailable ||
-                UpdateLabel.Text == Resources.AboutForm_WinThumbsPreloader_BetaVersionAvailable)
-            {
-                url = "https://github.com/joaoschlickmann/WinThumbsPreloader-V3";
-                WriteLine("Opening GitHub link: " + url, LoggingFrequency.GUILogging);
-            }
+            WriteLine("Triggering auto-update from UpdateLabel", LoggingFrequency.GUILogging);
+            _isUpdating = true;
+            UpdateLabel.Enabled = false;
 
-            if (!string.IsNullOrEmpty(url))
+            try
             {
-                try
-                {
-                    ProcessStartInfo psi = new ProcessStartInfo
+                await AutoUpdater.PromptAndInstallUpdateAsync(
+                    this,
+                    _latestUpdateResult,
+                    restartMinimized: false,
+                    status =>
                     {
-                        FileName = url,
-                        UseShellExecute = true
-                    };
-                    Process.Start(psi);
-                }
-                catch (Exception ex)
+                        if (!IsDisposed && !Disposing)
+                        {
+                            UpdateLabel.Text = status;
+                        }
+                    });
+            }
+            finally
+            {
+                if (!IsDisposed && !Disposing)
                 {
-                    WriteLine("Unable to open the link: " + ex.Message, LoggingFrequency.GUILogging);
-                    MessageBox.Show("Unable to open the link: " + ex.Message);
+                    UpdateLabel.Enabled = true;
+                    _isUpdating = false;
+                    ApplyUpdateLabelState(_latestUpdateResult);
                 }
             }
         }

@@ -33,10 +33,13 @@ namespace WinThumbsPreloader
         public int cacheUpdateInterval;
         public int autoBackupInterval;
         public int autoRestoreInterval;
+        private ToolStripMenuItem checkForUpdatesToolStripMenuItem;
+        private UpdateCheckResult _trayUpdateResult;
 
         public CacheForm()
         {
             InitializeComponent();
+            InitializeTrayUpdateMenu();
             notifyIcon1.Visible = false;
             CheckForStartMinimized(null, null);
             OutputTextBox_Initialize(null, null);
@@ -48,6 +51,7 @@ namespace WinThumbsPreloader
             this.Resize += CacheForm_Resize;
             this.Shown += CacheForm_Shown;
             notifyIcon1.DoubleClick += notifyIcon1_DoubleClick;
+            notifyIcon1.BalloonTipClicked += notifyIcon1_BalloonTipClicked;
             notifyIcon1.Icon = Resources.MainIcon;
             CacheForm.BackupInfoChanged += CacheForm_BackupInfoChanged;
 
@@ -57,9 +61,113 @@ namespace WinThumbsPreloader
             AutoRestoreThumbsCache();
         }
 
+        private void InitializeTrayUpdateMenu()
+        {
+            checkForUpdatesToolStripMenuItem = new ToolStripMenuItem("Check for Updates...");
+            checkForUpdatesToolStripMenuItem.Click += checkForUpdatesToolStripMenuItem_Click;
+
+            int exitIndex = contextMenuStrip1.Items.IndexOf(exitToolStripMenuItem);
+            if (exitIndex >= 0)
+            {
+                contextMenuStrip1.Items.Insert(exitIndex, checkForUpdatesToolStripMenuItem);
+                contextMenuStrip1.Items.Insert(exitIndex + 1, new ToolStripSeparator());
+            }
+            else
+            {
+                contextMenuStrip1.Items.Add(new ToolStripSeparator());
+                contextMenuStrip1.Items.Add(checkForUpdatesToolStripMenuItem);
+            }
+        }
+
         private async void CacheForm_Shown(object sender, EventArgs e)
         {
             await AboutForm.CheckForCacheReset(true, false);
+
+            if (Program.AppOptions?.startMinimized == true)
+            {
+                await CheckForTrayUpdatesAsync(silentIfUpToDate: true);
+            }
+        }
+
+        private async Task CheckForTrayUpdatesAsync(bool silentIfUpToDate)
+        {
+            _trayUpdateResult = await AutoUpdater.CheckForUpdatesAsync();
+            if (IsDisposed || Disposing || _trayUpdateResult == null)
+                return;
+
+            if (_trayUpdateResult.IsUpdateAvailable)
+            {
+                checkForUpdatesToolStripMenuItem.Text = $"Install Update (v{_trayUpdateResult.LatestVersion})...";
+                checkForUpdatesToolStripMenuItem.Font = new System.Drawing.Font(
+                    checkForUpdatesToolStripMenuItem.Font,
+                    System.Drawing.FontStyle.Bold);
+
+                if (silentIfUpToDate && notifyIcon1 != null && notifyIcon1.Visible)
+                {
+                    notifyIcon1.ShowBalloonTip(
+                        8000,
+                        "WinThumbsPreloader Update Available",
+                        $"Version {_trayUpdateResult.LatestVersion} is available. Click to download and install.",
+                        ToolTipIcon.Info);
+                }
+                else if (!silentIfUpToDate)
+                {
+                    await AutoUpdater.PromptAndInstallUpdateAsync(
+                        this,
+                        _trayUpdateResult,
+                        restartMinimized: WindowState == FormWindowState.Minimized,
+                        status => SetCacheOutput(status));
+                }
+            }
+            else if (!silentIfUpToDate)
+            {
+                if (_trayUpdateResult.State == UpdateState.Error)
+                {
+                    MessageBox.Show(
+                        this,
+                        Resources.AboutForm_WinThumbsPreloader_UpdateCheckFailed,
+                        "Update Check",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        this,
+                        $"{Resources.AboutForm_WinThumbsPreloader_IsUpToDate} (v{Application.ProductVersion}).",
+                        "Update Check",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+            }
+        }
+
+        private async void notifyIcon1_BalloonTipClicked(object sender, EventArgs e)
+        {
+            if (_trayUpdateResult != null && _trayUpdateResult.IsUpdateAvailable)
+            {
+                await AutoUpdater.PromptAndInstallUpdateAsync(
+                    this,
+                    _trayUpdateResult,
+                    restartMinimized: WindowState == FormWindowState.Minimized,
+                    status => SetCacheOutput(status));
+            }
+        }
+
+        private async void checkForUpdatesToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (_trayUpdateResult != null && _trayUpdateResult.IsUpdateAvailable)
+            {
+                await AutoUpdater.PromptAndInstallUpdateAsync(
+                    this,
+                    _trayUpdateResult,
+                    restartMinimized: WindowState == FormWindowState.Minimized,
+                    status => SetCacheOutput(status));
+            }
+            else
+            {
+                await CheckForTrayUpdatesAsync(silentIfUpToDate: false);
+            }
         }
 
         private void CacheForm_Load(object sender, EventArgs e)

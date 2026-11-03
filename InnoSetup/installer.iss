@@ -44,6 +44,8 @@ WizardImageStretch=no
 WizardSmallImageFile=WizardSmallImageFile.bmp
 SolidCompression=yes
 Compression=lzma2/max
+CloseApplications=force
+CloseApplicationsFilter=*.exe,*.dll
 
 [Languages]
 Name: en; MessagesFile: "compiler:Default.isl"
@@ -73,6 +75,8 @@ Name: "{commonprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppFilename}"
 
 [Run]
 Filename: "{app}\{#MyAppFilename}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent shellexec
+Filename: "{app}\{#MyAppFilename}"; Flags: nowait shellexec skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCH')
+Filename: "{app}\{#MyAppFilename}"; Parameters: "-startminimized"; Flags: nowait shellexec skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
 
 [Registry]
 ; ---- Directory context menu ----
@@ -131,6 +135,27 @@ Root: "HKCU"; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Volume
 Root: "HKCU"; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppFilename}"" -startminimized"; Flags: uninsdeletevalue
 
 [Code]
+function CmdLineParamExists(const Value: string): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), Value) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM "{#MyAppFilename}"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := '';
+end;
+
 function IsInPath(Dir: string): Boolean;
 var
   S: string;
