@@ -4,6 +4,22 @@ All notable changes to **WinThumbsPreloader** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-11-05
+
+### Added
+- **Windows Optimizer Module (`WindowsOptimizer`, `WindowsOptimizerForm`)**: Added a dedicated Windows OS & Explorer optimization window accessible from `SettingsForm` (**Optimize OS**), `CacheForm` (**Optimize OS**), and the system tray context menu (**Windows Optimizer...**), featuring:
+  - **Thumbnail Cache Protection**: Disables Windows Automatic Maintenance cache purge (`Autorun = 0` across `HKCU`, `HKLM`, and `WOW6432Node` under `VolumeCaches\Thumbnail Cache`), clears Disk Cleanup `StateFlagsXXXX` entries, and supports toggling the `\Microsoft\Windows\DiskCleanup\SilentCleanup` scheduled task.
+  - **SMB / NAS & Thumbnail Policies**: Disables `Thumbs.db` creation on network shares (`DisableThumbsDBOnNetworkFolders = 1`) and enforces active thumbnail rendering and local caching (`IconsOnly = 0`, `DisableThumbnailCache = 0`, `NoThumbnailCache = 0`).
+  - **Windows Explorer Performance**: Disables Automatic Folder Type Discovery (`FolderType = NotSpecified` under `Bags\AllFolders\Shell`) for instant loading of large media directories, expands folder view cache capacity (`BagMRU Size = 20000`), and expands the Windows Icon Cache (`Max Cached Icons` = `4096` / `8192` / `16384` KB).
+  - **Shell Integration & Safe Maintenance**: Registers or removes the cascading Explorer right-click context menu in both Portable mode (`HKCU\Software\Classes`) and Administrator mode (`HKLM\Software\Classes`), rebuilds the Windows Icon Cache (`iconcache_*.db` + `ie4uinit.exe -show`) while keeping `thumbcache_*.db` untouched, restarts Windows Explorer cleanly (`TerminateProcess` exit code `1`), and restores standard Windows defaults.
+  - **Smart Hybrid UAC Elevation**: Applies user-scoped (`HKCU`) tweaks immediately without requiring elevation and provides an on-demand **Elevate & Apply (UAC)** helper (`-apply-optimizations` / `-restore-defaults`) for system-wide (`HKLM` / Scheduled Task) settings.
+
+### Fixed
+- **Single-Instance GUI Enforcement & System Tray Deduplication (`SingleInstanceCoordinator`, `Program`, `CacheForm`, `Options`)**: Added session-local single-instance coordination (`Mutex` + `EventWaitHandle` IPC) so launching `WinThumbsPreloader.exe` from the Start Menu or Explorer while already running (including when minimized to the system tray) restores and focuses the existing window instead of spawning duplicate processes, ensured only one `NotifyIcon` is ever active per process, and routed all exits through `Program.ExitApplication` / `-shutdown` so tray icons are cleanly removed without leaving ghost icons.
+- **Single Canonical Installation Replacement (`installer.iss`)**: Enforced a single canonical installation path (`{commonpf}\WinThumbsPreloader`) with `DisableDirPage=yes` and `UsePreviousAppDir=no`, and added `PrepareToInstall` cleanup that signals `-shutdown`, terminates lingering instances, uninstalls/removes duplicate installations from alternate directories (`%LocalAppData%\Programs\WinThumbsPreloader`, 32-bit Program Files, or prior `Uninstall` locations), removes duplicate per-user Start Menu/Desktop shortcuts, and cleans stale `HKCU\Software\Classes` context menu overrides.
+
+---
+
 ## [3.1.3] - 2026-11-03
 
 ### Fixed

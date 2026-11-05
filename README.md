@@ -85,6 +85,12 @@ Building upon the foundation of **v1** (core preloading and Explorer context men
 - **Task Scheduler**: Create background preloading tasks Directly in Windows Task Scheduler with custom intervals (Days, Hours, or Minutes) and CLI arguments.
 - **System Tray & Startup**: Starts minimized to the system tray with Windows by default to monitor cache health and run auto-backup/auto-restore rules silently.
 
+### 6. Built-In Windows Optimizer Module (`WindowsOptimizerForm`)
+- **Thumbnail Cache Anti-Purge**: Disables Windows Automatic Maintenance thumbnail cache cleanup (`Autorun = 0` under `HKCU`, `HKLM`, and `WOW6432Node` `VolumeCaches\Thumbnail Cache`), zeroes out Disk Cleanup `StateFlags0000`–`StateFlags9999` values, and optionally disables the `\Microsoft\Windows\DiskCleanup\SilentCleanup` scheduled task.
+- **SMB / NAS Network & Explorer Thumbnail Policies**: Disables slow `Thumbs.db` creation on network shares (`DisableThumbsDBOnNetworkFolders = 1`) so SMB/NAS folders use your fast local SSD `thumbcache_*.db`, and forces thumbnail previews (`IconsOnly = 0`, `DisableThumbnailCache = 0`).
+- **Explorer ShellBag & Icon Cache Tuning**: Disables Automatic Folder Type Discovery (`FolderType = NotSpecified`) for instant opening of massive media folders, expands folder view memory to `20,000` folders (`BagMRU Size = 20000`), and expands the Windows Icon Cache (`Max Cached Icons` up to `16384 KB`).
+- **Portable Context Menu & Safe Maintenance**: Register or remove the Explorer right-click cascading context menu directly from the UI (even in Portable mode without Admin via `HKCU\Software\Classes`), rebuild the Windows Icon Cache without touching `thumbcache_*.db`, and revert all tweaks to Windows defaults at any time.
+
 ---
 
 ## Installation
