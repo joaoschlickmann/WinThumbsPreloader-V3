@@ -818,7 +818,7 @@ namespace WinThumbsPreloader
                     updateResult.InstallerSha256,
                     requireSha256: true))
                 {
-                    Environment.Exit(0);
+                    Program.ExitApplication(0);
                     return true;
                 }
 

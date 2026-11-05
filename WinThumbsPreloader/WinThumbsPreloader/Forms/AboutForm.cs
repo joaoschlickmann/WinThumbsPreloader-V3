@@ -40,6 +40,9 @@ namespace WinThumbsPreloader
             PreloadTooltip.SetToolTip(
                 CloseButton,
                 "Minimizes WinThumbsPreloader to the system tray.\r\nHolding \"SHIFT\" will exit the application.");
+            PreloadTooltip.SetToolTip(
+                OptimizeButton,
+                "Open Windows Optimizer to protect thumbnail cache, disable SMB Thumbs.db, and speed up Windows Explorer.");
         }
 
         private void AboutForm_Load(object sender, EventArgs e)
@@ -57,6 +60,11 @@ namespace WinThumbsPreloader
             {
                 Program.AppOptions.reopenSettings = false;
                 SettingsButton_Click(sender, e);
+            }
+            else if (Program.AppOptions.reopenOptimizer)
+            {
+                Program.AppOptions.reopenOptimizer = false;
+                this.OpenSecondaryFormCentered(new WindowsOptimizerForm());
             }
         }
 
@@ -159,7 +167,7 @@ namespace WinThumbsPreloader
                 }
                 else
                 {
-                    Environment.Exit(0);
+                    Program.ExitApplication(0);
                 }
                 return;
             }
@@ -183,7 +191,7 @@ namespace WinThumbsPreloader
                 }
                 else
                 {
-                    Environment.Exit(0);
+                    Program.ExitApplication(0);
                 }
                 return;
             }
@@ -263,6 +271,12 @@ namespace WinThumbsPreloader
             WriteLine("Opening SettingsForm from AboutForm", LoggingFrequency.GUILogging);
             SettingsForm settingsForm = new SettingsForm();
             this.OpenFormCentered(settingsForm);
+        }
+
+        private void OptimizeButton_Click(object sender, EventArgs e)
+        {
+            WriteLine("Opening WindowsOptimizerForm from AboutForm", LoggingFrequency.GUILogging);
+            this.OpenSecondaryFormCentered(new WindowsOptimizerForm());
         }
 
         private void PreloadButton_Click(object sender, EventArgs e)

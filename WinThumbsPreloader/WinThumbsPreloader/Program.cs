@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,7 +16,7 @@ namespace WinThumbsPreloader
 {
     static class Program
     {
-        public static Options AppOptions { get; private set; }
+        public static Options AppOptions { get; internal set; }
         public static AboutForm MainAboutForm { get; internal set; }
         public static CacheForm TrayCacheForm { get; internal set; }
 
@@ -23,6 +24,23 @@ namespace WinThumbsPreloader
         public static bool adminElevationAttempted = false;
         public static bool standardElevationAttempted = false;
         public static bool formOpen = false;
+
+        private static SingleInstanceCoordinator _singleInstanceCoordinator;
+
+        private const int SW_RESTORE = 9;
+        private const int SW_SHOW = 5;
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool BringWindowToTop(IntPtr hWnd);
 
         /// <summary>
         /// The main entry point for the application.
@@ -44,29 +62,327 @@ namespace WinThumbsPreloader
             WriteLine($"Options: Bad or no arguments = {options.badOrNoArguments}, Include nested directories = {options.includeNestedDirectories}, Multithreaded = {options.multiThreaded}, Silent mode = {options.silentMode}, Start minimized = {options.startMinimized}, Thread count = {options.threadCount}, Max parallel instances = {options.maxParallelInstances}", LoggingFrequency.PreloaderLogging);
             WriteLine($"Paths: {string.Join(Environment.NewLine, options.paths)}", LoggingFrequency.PreloaderLogging);
 
-            if (!HandleElevationState(arguments))
+            if (options.shutdownExisting)
+            {
+                WriteLine("Signaling existing GUI instance to shut down cleanly.", LoggingFrequency.AllLogging);
+                SingleInstanceCoordinator.SignalShutdown();
+                return;
+            }
+
+            if (options.unknownFlagProvided)
+            {
+                WriteLine("Exiting quietly due to unrecognized CLI flag.", LoggingFrequency.AllLogging);
+                return;
+            }
+
+            if (options.applyOptimizations)
+            {
+                WriteLine("Applying Windows optimizations via CLI helper.", LoggingFrequency.AllLogging);
+                var profile = WindowsOptimizer.OptimizationProfile.LoadFromSettings();
+                WindowsOptimizer.ApplyOptimizations(profile, broadcastShellChange: true);
+                return;
+            }
+
+            if (options.restoreDefaults)
+            {
+                WriteLine("Restoring Windows optimization defaults via CLI helper.", LoggingFrequency.AllLogging);
+                WindowsOptimizer.RestoreWindowsDefaults(broadcastShellChange: true);
+                return;
+            }
+
+            if (options.IsGuiLaunch)
+            {
+                if (!SingleInstanceCoordinator.TryAcquireOrNotifyExisting(
+                    options,
+                    out _singleInstanceCoordinator,
+                    OnExternalActivationSignal))
+                {
+                    WriteLine("Another GUI instance of WinThumbsPreloader is already open; delegating and exiting.", LoggingFrequency.AllLogging);
+                    return;
+                }
+            }
+
+            try
+            {
+                if (!HandleElevationState(arguments))
+                    return;
+
+                CacheForm.EnsureThumbnailCacheProtection();
+
+                if (options.startMinimized)
+                {
+                    WriteLine("Starting GUI cache form minimized", LoggingFrequency.GUILogging);
+
+                    StartMinimized();
+                }
+                else if (options.badOrNoArguments || options.paths == null || options.paths.Count == 0)
+                {
+                    WriteLine("Starting GUI", LoggingFrequency.AllLogging);
+
+                    OpenAboutForm();
+                }
+                else if (options.paths.Count >= 1)
+                {
+                    WriteLine($"Active Instances: {activeInstances}", LoggingFrequency.DebugLogging);
+                    WriteLine("Starting preloader", LoggingFrequency.PreloaderLogging);
+
+                    RunPreloaderMode(options);
+                }
+            }
+            finally
+            {
+                CleanupTrayIconsOnExit();
+                ReleaseSingleInstanceCoordinator();
+            }
+        }
+
+        private static void OnExternalActivationSignal(SingleInstanceActivationKind kind)
+        {
+            if (kind == SingleInstanceActivationKind.Shutdown)
+            {
+                WriteLine("Received shutdown signal from external process.", LoggingFrequency.AllLogging);
+                try
+                {
+                    InvokeOnUiThread(() => ExitApplication(0));
+                }
+                catch
+                {
+                    ExitApplication(0);
+                }
+                return;
+            }
+
+            InvokeOnUiThread(() => RestoreAndActivateExistingInstance(kind));
+        }
+
+        private static void InvokeOnUiThread(Action action)
+        {
+            Form target = GetUiInvokeTargetForm();
+            if (target != null && !target.IsDisposed && target.IsHandleCreated)
+            {
+                if (target.InvokeRequired)
+                {
+                    target.BeginInvoke(action);
+                }
+                else
+                {
+                    action();
+                }
+                return;
+            }
+
+            action();
+        }
+
+        private static Form GetUiInvokeTargetForm()
+        {
+            if (MainAboutForm != null && !MainAboutForm.IsDisposed && MainAboutForm.IsHandleCreated)
+                return MainAboutForm;
+
+            if (TrayCacheForm != null && !TrayCacheForm.IsDisposed && TrayCacheForm.IsHandleCreated)
+                return TrayCacheForm;
+
+            foreach (Form form in Application.OpenForms)
+            {
+                if (form != null && !form.IsDisposed && form.IsHandleCreated)
+                    return form;
+            }
+
+            return null;
+        }
+
+        public static void RestoreAndActivateExistingInstance(SingleInstanceActivationKind kind = SingleInstanceActivationKind.ShowMainWindow)
+        {
+            WriteLine($"Restoring and activating existing instance (Kind: {kind})", LoggingFrequency.GUILogging);
+
+            Form visibleDesktopForm = FindActiveVisibleDesktopForm();
+
+            if (visibleDesktopForm == null)
+            {
+                // Currently minimized to the system tray (no desktop window is visible).
+                ShowMainAboutForm();
+                visibleDesktopForm = MainAboutForm;
+            }
+            else
+            {
+                if (TrayCacheForm != null && !TrayCacheForm.IsDisposed)
+                {
+                    TrayCacheForm.SetTrayIconVisible(false);
+                }
+
+                // Restore any minimized parent/owner in the chain first.
+                Form rootOwner = visibleDesktopForm;
+                while (rootOwner.Owner != null && !rootOwner.Owner.IsDisposed)
+                {
+                    rootOwner = rootOwner.Owner;
+                }
+
+                if (rootOwner != visibleDesktopForm && rootOwner.Visible && rootOwner.WindowState == FormWindowState.Minimized)
+                {
+                    RestoreFormWindowState(rootOwner);
+                }
+
+                RestoreFormWindowState(visibleDesktopForm);
+                BringWindowToFront(visibleDesktopForm);
+            }
+
+            if (kind == SingleInstanceActivationKind.ReopenOptimizer)
+            {
+                bool optimizerAlreadyOpen = Application.OpenForms
+                    .Cast<Form>()
+                    .Any(f => f is WindowsOptimizerForm && !f.IsDisposed && f.Visible);
+
+                if (!optimizerAlreadyOpen && visibleDesktopForm != null && !visibleDesktopForm.IsDisposed)
+                {
+                    visibleDesktopForm.OpenSecondaryFormCentered(new WindowsOptimizerForm());
+                }
+            }
+            else if (kind == SingleInstanceActivationKind.ReopenSettings)
+            {
+                bool settingsAlreadyOpen = Application.OpenForms
+                    .Cast<Form>()
+                    .Any(f => f is SettingsForm && !f.IsDisposed && f.Visible);
+
+                if (!settingsAlreadyOpen && visibleDesktopForm is AboutForm about && !about.IsDisposed && !about.Modal)
+                {
+                    about.BeginInvoke(new Action(() =>
+                    {
+                        if (!about.IsDisposed)
+                            about.OpenFormCentered(new SettingsForm());
+                    }));
+                }
+            }
+        }
+
+        private static Form FindActiveVisibleDesktopForm()
+        {
+            Form bestModalOrChild = null;
+            Form bestTopLevel = null;
+
+            foreach (Form form in Application.OpenForms)
+            {
+                if (form == null || form.IsDisposed || !form.Visible)
+                    continue;
+
+                // Ignore TrayCacheForm when it is hidden in the system tray
+                if (ReferenceEquals(form, TrayCacheForm) &&
+                    form.WindowState == FormWindowState.Minimized &&
+                    !form.ShowInTaskbar)
+                {
+                    continue;
+                }
+
+                if (form.Modal || form.Owner != null)
+                {
+                    bestModalOrChild = form;
+                }
+                else if (form.ShowInTaskbar)
+                {
+                    bestTopLevel = form;
+                }
+            }
+
+            return bestModalOrChild ?? bestTopLevel;
+        }
+
+        private static void RestoreFormWindowState(Form form)
+        {
+            if (form == null || form.IsDisposed)
                 return;
 
-            CacheForm.EnsureThumbnailCacheProtection();
+            if (!form.Visible)
+                form.Show();
 
-            if (options.startMinimized)
+            if (form.WindowState == FormWindowState.Minimized)
             {
-                WriteLine("Starting GUI cache form minimized", LoggingFrequency.GUILogging);
+                if (form.IsHandleCreated)
+                    ShowWindow(form.Handle, SW_RESTORE);
 
-                StartMinimized();
+                form.WindowState = FormWindowState.Normal;
             }
-            else if (options.badOrNoArguments || options.paths == null || options.paths.Count == 0)
-            {
-                WriteLine("Starting GUI", LoggingFrequency.AllLogging);
 
-                OpenAboutForm();
+            if (form.Owner == null && !form.Modal)
+            {
+                form.ShowInTaskbar = true;
             }
-            else if (options.paths.Count >= 1)
-            {
-                WriteLine($"Active Instances: {activeInstances}", LoggingFrequency.DebugLogging);
-                WriteLine("Starting preloader", LoggingFrequency.PreloaderLogging);
+        }
 
-                RunPreloaderMode(options);
+        public static void BringWindowToFront(Form form)
+        {
+            if (form == null || form.IsDisposed)
+                return;
+
+            try
+            {
+                RestoreFormWindowState(form);
+
+                if (form.IsHandleCreated)
+                {
+                    if (IsIconic(form.Handle))
+                        ShowWindow(form.Handle, SW_RESTORE);
+                    else
+                        ShowWindow(form.Handle, SW_SHOW);
+
+                    BringWindowToTop(form.Handle);
+                    SetForegroundWindow(form.Handle);
+                }
+
+                bool wasTopMost = form.TopMost;
+                form.TopMost = true;
+                form.Activate();
+                form.BringToFront();
+                form.TopMost = wasTopMost;
+                form.Focus();
+            }
+            catch (Exception ex)
+            {
+                WriteLine("Failed to bring window to front: " + ex.Message, LoggingFrequency.DebugLogging);
+            }
+        }
+
+        public static void ExitApplication(int exitCode = 0)
+        {
+            CleanupTrayIconsOnExit();
+            ReleaseSingleInstanceCoordinator();
+            Environment.Exit(exitCode);
+        }
+
+        private static void CleanupTrayIconsOnExit()
+        {
+            try
+            {
+                if (TrayCacheForm != null && !TrayCacheForm.IsDisposed)
+                {
+                    TrayCacheForm.SetTrayIconVisible(false);
+                }
+
+                foreach (Form form in Application.OpenForms.Cast<Form>().ToArray())
+                {
+                    if (form is CacheForm cacheForm && !cacheForm.IsDisposed)
+                    {
+                        cacheForm.SetTrayIconVisible(false);
+                    }
+                }
+            }
+            catch
+            {
+                // Best effort tray icon cleanup
+            }
+        }
+
+        private static void ReleaseSingleInstanceCoordinator()
+        {
+            try
+            {
+                _singleInstanceCoordinator?.Dispose();
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+            finally
+            {
+                _singleInstanceCoordinator = null;
             }
         }
 
@@ -77,6 +393,7 @@ namespace WinThumbsPreloader
             Application.SetHighDpiMode(HighDpiMode.SystemAware);
             Application.SetCompatibleTextRenderingDefault(false);
             TrayCacheForm = new CacheForm();
+            _ = TrayCacheForm.Handle;
             Application.Run(TrayCacheForm);
         }
 
@@ -104,6 +421,7 @@ namespace WinThumbsPreloader
                 TrayCacheForm = new CacheForm();
             }
 
+            _ = TrayCacheForm.Handle;
             TrayCacheForm.RefreshSettingsState();
             TrayCacheForm.MinimizeToTray();
         }
@@ -128,7 +446,7 @@ namespace WinThumbsPreloader
             MainAboutForm.Show();
             MainAboutForm.WindowState = FormWindowState.Normal;
             MainAboutForm.ShowInTaskbar = true;
-            MainAboutForm.Activate();
+            BringWindowToFront(MainAboutForm);
         }
 
         private static void RunPreloaderMode(Options options)
@@ -228,15 +546,26 @@ namespace WinThumbsPreloader
                 }
             }
 
+            bool releasedCoordinator = _singleInstanceCoordinator != null;
+            if (releasedCoordinator)
+            {
+                ReleaseSingleInstanceCoordinator();
+            }
+
             try
             {
                 WriteLine("Attempting to restart as administrator.", LoggingFrequency.GUILogging);
                 Process.Start(psi);
-                Environment.Exit(0);
+                ExitApplication(0);
                 return true;
             }
             catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
             {
+                if (releasedCoordinator)
+                {
+                    _singleInstanceCoordinator = SingleInstanceCoordinator.TryAcquire(onActivate: OnExternalActivationSignal);
+                }
+
                 // User cancelled the UAC prompt
                 WriteLine("User cancelled admin elevation: " + ex.Message, LoggingFrequency.GUILogging);
                 MessageBox.Show(
@@ -248,6 +577,11 @@ namespace WinThumbsPreloader
             }
             catch (Exception ex)
             {
+                if (releasedCoordinator)
+                {
+                    _singleInstanceCoordinator = SingleInstanceCoordinator.TryAcquire(onActivate: OnExternalActivationSignal);
+                }
+
                 WriteLine("Failed to restart as administrator: " + ex.Message, LoggingFrequency.GUILogging);
                 MessageBox.Show(
                     "Failed to restart as administrator.\n" + ex.Message,

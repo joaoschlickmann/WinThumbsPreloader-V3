@@ -1,4 +1,4 @@
-﻿namespace WinThumbsPreloader
+namespace WinThumbsPreloader
 {
     partial class CacheForm
     {
@@ -57,6 +57,7 @@
             exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             CacheToolTips = new System.Windows.Forms.ToolTip(components);
             AdvancedButton = new System.Windows.Forms.Button();
+            OptimizeButton = new System.Windows.Forms.Button();
             CacheOptionsGroupBox.SuspendLayout();
             contextMenuStrip1.SuspendLayout();
             SuspendLayout();
@@ -244,10 +245,22 @@
             AdvancedButton.UseVisualStyleBackColor = true;
             AdvancedButton.Click += AdvancedButton_Click;
             // 
+            // OptimizeButton
+            // 
+            OptimizeButton.Location = new System.Drawing.Point(13, 297);
+            OptimizeButton.Name = "OptimizeButton";
+            OptimizeButton.Size = new System.Drawing.Size(110, 28);
+            OptimizeButton.TabIndex = 14;
+            OptimizeButton.Text = "Optimize OS";
+            CacheToolTips.SetToolTip(OptimizeButton, "Open Windows Optimizer to protect thumbnail cache and tune Windows Explorer.");
+            OptimizeButton.UseVisualStyleBackColor = true;
+            OptimizeButton.Click += OptimizeButton_Click;
+            // 
             // CacheForm
             // 
             resources.ApplyResources(this, "$this");
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            Controls.Add(OptimizeButton);
             Controls.Add(AdvancedButton);
             Controls.Add(CloseButton);
             Controls.Add(CacheOptionsGroupBox);
@@ -290,5 +303,6 @@
         private System.Windows.Forms.ToolTip CacheToolTips;
         private System.Windows.Forms.ProgressBar progressBarRestore;
         private System.Windows.Forms.Button AdvancedButton;
+        private System.Windows.Forms.Button OptimizeButton;
     }
 }

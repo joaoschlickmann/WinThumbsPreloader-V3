@@ -13,11 +13,23 @@ namespace WinThumbsPreloader
         public bool multiThreaded;
         public bool startMinimized;
         public bool reopenSettings;
+        public bool reopenOptimizer;
+        public bool applyOptimizations;
+        public bool restoreDefaults;
+        public bool shutdownExisting;
+        public bool unknownFlagProvided;
         public bool invalidPathProvided;
         public string invalidPath = string.Empty;
         public int threadCount;
         public int maxParallelInstances = 0;
         public List<string> paths = new List<string>();
+
+        public bool IsGuiLaunch =>
+            !applyOptimizations &&
+            !restoreDefaults &&
+            !shutdownExisting &&
+            !unknownFlagProvided &&
+            (startMinimized || badOrNoArguments || paths == null || paths.Count == 0);
 
         public Options(string[] arguments)
         {
@@ -60,6 +72,26 @@ namespace WinThumbsPreloader
                 else if (arg.Equals("-reopensettings", StringComparison.OrdinalIgnoreCase))
                 {
                     reopenSettings = true;
+                    break;
+                }
+                else if (arg.Equals("-reopenoptimizer", StringComparison.OrdinalIgnoreCase))
+                {
+                    reopenOptimizer = true;
+                    break;
+                }
+                else if (arg.Equals("-apply-optimizations", StringComparison.OrdinalIgnoreCase))
+                {
+                    applyOptimizations = true;
+                    break;
+                }
+                else if (arg.Equals("-restore-defaults", StringComparison.OrdinalIgnoreCase))
+                {
+                    restoreDefaults = true;
+                    break;
+                }
+                else if (arg.Equals("-shutdown", StringComparison.OrdinalIgnoreCase))
+                {
+                    shutdownExisting = true;
                     break;
                 }
 
@@ -138,6 +170,15 @@ namespace WinThumbsPreloader
                 if (TryAddCommaSeparatedPaths(arg))
                 {
                     continue;
+                }
+
+                string trimmedArg = arg.Trim().Trim('"');
+                if (trimmedArg.StartsWith("-", StringComparison.Ordinal))
+                {
+                    WriteLine("Unrecognized CLI flag: " + trimmedArg, LoggingFrequency.AllLogging);
+                    unknownFlagProvided = true;
+                    badOrNoArguments = true;
+                    return;
                 }
 
                 WriteLine("Invalid path argument: " + arg, LoggingFrequency.AllLogging);

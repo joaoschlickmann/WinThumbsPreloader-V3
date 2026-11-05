@@ -52,7 +52,7 @@ namespace WinThumbsPreloader
             if (e.CloseReason == CloseReason.UserClosing && (Control.ModifierKeys & Keys.Shift) == Keys.Shift)
             {
                 WriteLine("Exiting application from SettingsForm", LoggingFrequency.DebugLogging);
-                Environment.Exit(0); // Exit the entire application
+                Program.ExitApplication(0); // Exit the entire application
             }
         }
 
@@ -307,7 +307,7 @@ namespace WinThumbsPreloader
             else if (CloseButton.Text == "Exit")
             {
                 WriteLine("Exiting application", LoggingFrequency.DebugLogging);
-                Environment.Exit(0);
+                Program.ExitApplication(0);
             }
         }
 
@@ -387,6 +387,13 @@ namespace WinThumbsPreloader
             WriteLine("Opening advanced settings form", LoggingFrequency.DebugLogging);
             AdvancedSettingsForm advancedSettingsForm = new AdvancedSettingsForm();
             this.OpenSecondaryFormCentered(advancedSettingsForm);
+        }
+
+        private void WindowsOptimizerButton_Click(object sender, EventArgs e)
+        {
+            WriteLine("Opening Windows Optimizer form from SettingsForm.", LoggingFrequency.GUILogging);
+            WindowsOptimizerForm optimizerForm = new WindowsOptimizerForm();
+            this.OpenSecondaryFormCentered(optimizerForm);
         }
     }
 }

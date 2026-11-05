@@ -34,8 +34,10 @@ namespace WinThumbsPreloader
         public int autoBackupInterval;
         public int autoRestoreInterval;
         private ToolStripMenuItem mainWindowToolStripMenuItem;
+        private ToolStripMenuItem windowsOptimizerToolStripMenuItem;
         private ToolStripMenuItem checkForUpdatesToolStripMenuItem;
         private UpdateCheckResult _trayUpdateResult;
+        private bool _startedMinimizedSession;
 
         public CacheForm()
         {
@@ -71,11 +73,14 @@ namespace WinThumbsPreloader
 
             mainWindowToolStripMenuItem = new ToolStripMenuItem("Main Window...");
             mainWindowToolStripMenuItem.Click += mainWindowToolStripMenuItem_Click;
+            windowsOptimizerToolStripMenuItem = new ToolStripMenuItem("Windows Optimizer...");
+            windowsOptimizerToolStripMenuItem.Click += OptimizeButton_Click;
 
             int openIndex = contextMenuStrip1.Items.IndexOf(openToolStripMenuItem);
             if (openIndex >= 0)
             {
                 contextMenuStrip1.Items.Insert(openIndex + 1, mainWindowToolStripMenuItem);
+                contextMenuStrip1.Items.Insert(openIndex + 2, windowsOptimizerToolStripMenuItem);
             }
             else
             {
@@ -103,6 +108,22 @@ namespace WinThumbsPreloader
             Program.ShowMainAboutForm();
         }
 
+        private void OptimizeButton_Click(object sender, EventArgs e)
+        {
+            WriteLine("Opening Windows Optimizer form from CacheForm.", LoggingFrequency.GUILogging);
+            var optimizerForm = new WindowsOptimizerForm();
+            if (Visible && WindowState != FormWindowState.Minimized)
+            {
+                this.OpenSecondaryFormCentered(optimizerForm);
+            }
+            else
+            {
+                optimizerForm.StartPosition = FormStartPosition.CenterScreen;
+                optimizerForm.Show();
+                optimizerForm.Activate();
+            }
+        }
+
         private void startWithWindowsToolStripMenuItem_Click(object sender, EventArgs e)
         {
             StartWithWindowsCheckBox.Checked = !StartWithWindowsCheckBox.Checked;
@@ -111,14 +132,14 @@ namespace WinThumbsPreloader
 
         private async void CacheForm_Shown(object sender, EventArgs e)
         {
-            if (Program.AppOptions?.startMinimized == true && WindowState == FormWindowState.Minimized)
+            if (_startedMinimizedSession && WindowState == FormWindowState.Minimized)
             {
                 MinimizeToTray();
             }
 
             await AboutForm.CheckForCacheReset(true, false);
 
-            if (Program.AppOptions?.startMinimized == true)
+            if (_startedMinimizedSession)
             {
                 await CheckForTrayUpdatesAsync(silentIfUpToDate: true);
             }
@@ -1992,6 +2013,7 @@ namespace WinThumbsPreloader
 
             EnsureLocalMachineAutorunDisabled(ThumbnailCacheKey);
             EnsureLocalMachineAutorunDisabled(ThumbnailCacheWow64Key);
+            WindowsOptimizer.EnsureStartupOptimizations();
             SyncStartupIfEnabledForCurrentExecutable();
 
             if (TryGetBackupPath(out string currentBackupPath))
@@ -3467,7 +3489,7 @@ namespace WinThumbsPreloader
         private void exitToolStripMenuItem_Click(object sender, EventArgs e)
         {
             WriteLine("Exiting application from icon tray", LoggingFrequency.DebugLogging);
-            Environment.Exit(0);
+            Program.ExitApplication(0);
         }
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
@@ -3567,7 +3589,7 @@ namespace WinThumbsPreloader
             if (CloseButton.Text == "Exit" || (Control.ModifierKeys & Keys.Shift) == Keys.Shift)
             {
                 WriteLine("Exiting application from cache form", LoggingFrequency.GUILogging);
-                Environment.Exit(0);
+                Program.ExitApplication(0);
                 return;
             }
 
@@ -3576,6 +3598,9 @@ namespace WinThumbsPreloader
 
         private void CacheForm_Resize(object sender, EventArgs e)
         {
+            if (this.Modal || this.Owner != null)
+                return;
+
             if (this.WindowState == FormWindowState.Minimized)
             {
                 ShowInTaskbar = false;
@@ -3592,8 +3617,18 @@ namespace WinThumbsPreloader
         {
             if (notifyIcon1 != null)
             {
-                if (visible && notifyIcon1.Icon == null)
-                    notifyIcon1.Icon = Resources.MainIcon;
+                if (visible)
+                {
+                    if (Program.TrayCacheForm != null &&
+                        !Program.TrayCacheForm.IsDisposed &&
+                        !ReferenceEquals(Program.TrayCacheForm, this))
+                    {
+                        Program.TrayCacheForm.SetTrayIconVisible(false);
+                    }
+
+                    if (notifyIcon1.Icon == null)
+                        notifyIcon1.Icon = Resources.MainIcon;
+                }
 
                 notifyIcon1.Visible = visible;
             }
@@ -3633,7 +3668,7 @@ namespace WinThumbsPreloader
             if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
             {
                 WriteLine("Exiting application from cache form", LoggingFrequency.GUILogging);
-                Environment.Exit(0); // Exit the entire application
+                Program.ExitApplication(0); // Exit the entire application
                 return;
             }
 
@@ -3647,7 +3682,12 @@ namespace WinThumbsPreloader
 
         private void CheckForStartMinimized(object sender, EventArgs e)
         {
-            if (Program.AppOptions?.startMinimized == true) { StartMinimized(null, null); }
+            if (!this.Modal && this.Owner == null && Program.AppOptions?.startMinimized == true)
+            {
+                _startedMinimizedSession = true;
+                Program.AppOptions.startMinimized = false;
+                StartMinimized(null, null);
+            }
         }
 
         private void StartMinimized(object sender, EventArgs e)

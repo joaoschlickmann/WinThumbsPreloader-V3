@@ -27,6 +27,10 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ChangesEnvironment=yes
 DefaultDirName={commonpf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
+PrivilegesRequired=admin
+UsedUserAreasWarning=no
+DisableDirPage=yes
+UsePreviousAppDir=no
 DirExistsWarning=no
 DisableReadyPage=yes
 DisableProgramGroupPage=yes
@@ -78,6 +82,12 @@ Filename: "{app}\{#MyAppFilename}"; Description: "{cm:LaunchProgram,{#StringChan
 Filename: "{app}\{#MyAppFilename}"; Parameters: "-startminimized"; Flags: nowait postinstall shellexec skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
 
 [Registry]
+; ---- Remove any stale per-user HKCU context menu overrides so canonical HKCR/HKLM entries take precedence ----
+Root: "HKCU"; Subkey: "Software\Classes\Directory\shell\{#MyAppName}"; Flags: dontcreatekey deletekey
+Root: "HKCU"; Subkey: "Software\Classes\Directory\Background\shell\{#MyAppName}"; Flags: dontcreatekey deletekey
+Root: "HKCU"; Subkey: "Software\Classes\Directory\Background\ContextMenus\Menu{#MyAppName}"; Flags: dontcreatekey deletekey
+Root: "HKCU"; Subkey: "Software\Classes\Drive\shell\{#MyAppName}"; Flags: dontcreatekey deletekey
+
 ; ---- Directory context menu ----
 Root: "HKCR"; Subkey: "Directory\shell\{#MyAppName}"; Flags: uninsdeletekey
 Root: "HKCR"; Subkey: "Directory\shell\{#MyAppName}"; ValueType: string; ValueName: "MUIVerb"; ValueData: "{#MyAppName}"
@@ -131,9 +141,33 @@ Root: "HKLM"; Subkey: "SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Exp
 Root: "HKCU"; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\Thumbnail Cache"; ValueType: dword; ValueName: "Autorun"; ValueData: "0"
 
 ; ---- Start with Windows by default (minimized to system tray) ----
+Root: "HKLM"; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "{#MyAppName}"; Flags: dontcreatekey deletevalue
 Root: "HKCU"; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppFilename}"" -startminimized"; Flags: uninsdeletevalue
 
 [Code]
+const
+  EVENT_MODIFY_STATE = $0002;
+
+function OpenEventW(dwDesiredAccess: Cardinal; bInheritHandle: BOOL; lpName: string): THandle;
+  external 'OpenEventW@kernel32.dll stdcall';
+function SetEvent(hEvent: THandle): BOOL;
+  external 'SetEvent@kernel32.dll stdcall';
+function CloseHandle(hObject: THandle): BOOL;
+  external 'CloseHandle@kernel32.dll stdcall';
+
+procedure SignalRunningInstanceShutdown();
+var
+  EventHandle: THandle;
+begin
+  EventHandle := OpenEventW(EVENT_MODIFY_STATE, False, 'Local\{#MyAppName}_{#MyAppId}_Shutdown');
+  if EventHandle <> 0 then
+  begin
+    SetEvent(EventHandle);
+    CloseHandle(EventHandle);
+    Sleep(250);
+  end;
+end;
+
 function CmdLineParamExists(const Value: string): Boolean;
 var
   I: Integer;
@@ -147,11 +181,74 @@ begin
     end;
 end;
 
+function NormalizeDirPath(const DirPath: string): string;
+begin
+  Result := RemoveBackslashUnlessRoot(Trim(RemoveQuotes(DirPath)));
+end;
+
+procedure CleanupAlternateDirectory(const CandidateDir, CanonicalDir: string);
+var
+  NormCandidate, NormCanonical, UninsExe: string;
+  ResultCode: Integer;
+begin
+  NormCandidate := NormalizeDirPath(CandidateDir);
+  NormCanonical := NormalizeDirPath(CanonicalDir);
+
+  if (NormCandidate = '') or (Length(NormCandidate) <= 3) or (CompareText(NormCandidate, NormCanonical) = 0) then
+    Exit;
+
+  if DirExists(NormCandidate) then
+  begin
+    UninsExe := AddBackslash(NormCandidate) + 'unins000.exe';
+    if FileExists(UninsExe) then
+      Exec(UninsExe, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+    DelTree(NormCandidate, True, True, True);
+  end;
+end;
+
+procedure CheckAndRemoveUninstallLocation(const RootKey: Integer; const SubKey, CanonicalDir: string);
+var
+  OldDir: string;
+begin
+  if RegQueryStringValue(RootKey, SubKey, 'InstallLocation', OldDir) then
+    CleanupAlternateDirectory(OldDir, CanonicalDir);
+
+  if RegQueryStringValue(RootKey, SubKey, 'Inno Setup: App Path', OldDir) then
+    CleanupAlternateDirectory(OldDir, CanonicalDir);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
+  CanonicalDir: string;
 begin
+  CanonicalDir := ExpandConstant('{app}');
+
+  { 1. Signal running v3.2.0+ GUI instance via named IPC event so tray icon is removed without spawning old binaries }
+  SignalRunningInstanceShutdown();
+
+  { 2. Force-terminate any remaining preloader/GUI processes (including legacy v3.1.x instances) }
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM "{#MyAppFilename}"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  { 3. Remove any previous installation located in a different directory }
+  CheckAndRemoveUninstallLocation(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1', CanonicalDir);
+  CheckAndRemoveUninstallLocation(HKLM32, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1', CanonicalDir);
+  CheckAndRemoveUninstallLocation(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1', CanonicalDir);
+  CheckAndRemoveUninstallLocation(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}_is1', CanonicalDir);
+
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}_is1');
+
+  { 4. Remove non-canonical per-user or 32-bit installations }
+  CleanupAlternateDirectory(ExpandConstant('{localappdata}\Programs\{#MyAppName}'), CanonicalDir);
+  CleanupAlternateDirectory(ExpandConstant('{commonpf32}\{#MyAppName}'), CanonicalDir);
+
+  { 5. Remove duplicate per-user Start Menu or Desktop shortcuts }
+  DeleteFile(ExpandConstant('{userprograms}\{#MyAppName}.lnk'));
+  DelTree(ExpandConstant('{userprograms}\{#MyAppName}'), True, True, True);
+  DeleteFile(ExpandConstant('{userdesktop}\{#MyAppName}.lnk'));
+
   Result := '';
 end;
 

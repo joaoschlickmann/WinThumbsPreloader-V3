@@ -1,4 +1,4 @@
-﻿using System.Windows.Forms;
+using System.Windows.Forms;
 
 namespace WinThumbsPreloader
 {
@@ -41,6 +41,7 @@ namespace WinThumbsPreloader
             BottomPanel = new Panel();
             PreloadButton = new Button();
             SettingsButton = new Button();
+            OptimizeButton = new Button();
             BorderTop = new Label();
             HeaderPanel = new Panel();
             AppIconPictureBox = new PictureBox();
@@ -80,6 +81,7 @@ namespace WinThumbsPreloader
             BottomPanel.BackColor = System.Drawing.SystemColors.Control;
             BottomPanel.Controls.Add(PreloadButton);
             BottomPanel.Controls.Add(SettingsButton);
+            BottomPanel.Controls.Add(OptimizeButton);
             BottomPanel.Controls.Add(CloseButton);
             BottomPanel.Controls.Add(LicenceButton);
             resources.ApplyResources(BottomPanel, "BottomPanel");
@@ -88,6 +90,9 @@ namespace WinThumbsPreloader
             // PreloadButton
             // 
             resources.ApplyResources(PreloadButton, "PreloadButton");
+            PreloadButton.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            PreloadButton.Location = new System.Drawing.Point(12, 10);
+            PreloadButton.Size = new System.Drawing.Size(88, 29);
             PreloadButton.Name = "PreloadButton";
             PreloadTooltip.SetToolTip(PreloadButton, resources.GetString("PreloadButton.ToolTip"));
             PreloadButton.UseVisualStyleBackColor = true;
@@ -96,9 +101,23 @@ namespace WinThumbsPreloader
             // SettingsButton
             // 
             resources.ApplyResources(SettingsButton, "SettingsButton");
+            SettingsButton.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            SettingsButton.Location = new System.Drawing.Point(106, 10);
+            SettingsButton.Size = new System.Drawing.Size(82, 29);
             SettingsButton.Name = "SettingsButton";
             SettingsButton.UseVisualStyleBackColor = true;
             SettingsButton.Click += SettingsButton_Click;
+            // 
+            // OptimizeButton
+            // 
+            OptimizeButton.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            OptimizeButton.Location = new System.Drawing.Point(194, 10);
+            OptimizeButton.Name = "OptimizeButton";
+            OptimizeButton.Size = new System.Drawing.Size(92, 29);
+            OptimizeButton.TabIndex = 2;
+            OptimizeButton.Text = "Optimize OS";
+            OptimizeButton.UseVisualStyleBackColor = true;
+            OptimizeButton.Click += OptimizeButton_Click;
             // 
             // BorderTop
             // 
@@ -152,6 +171,16 @@ namespace WinThumbsPreloader
             // AboutForm
             // 
             resources.ApplyResources(this, "$this");
+            ClientSize = new System.Drawing.Size(468, 475);
+            BottomPanel.Size = new System.Drawing.Size(468, 50);
+            LicenceButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            LicenceButton.Location = new System.Drawing.Point(292, 10);
+            LicenceButton.Size = new System.Drawing.Size(78, 29);
+            LicenceButton.TabIndex = 3;
+            CloseButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            CloseButton.Location = new System.Drawing.Point(376, 10);
+            CloseButton.Size = new System.Drawing.Size(80, 29);
+            CloseButton.TabIndex = 4;
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = System.Drawing.Color.White;
             Controls.Add(ContentPanel);
@@ -184,6 +213,7 @@ namespace WinThumbsPreloader
         private RichTextBox RichTextBox;
         private Label UpdateLabel;
         private Button SettingsButton;
+        private Button OptimizeButton;
         private Button PreloadButton;
         private ToolTip PreloadTooltip;
     }

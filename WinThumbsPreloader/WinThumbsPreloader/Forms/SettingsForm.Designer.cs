@@ -1,4 +1,4 @@
-﻿namespace WinThumbsPreloader
+namespace WinThumbsPreloader
 {
     partial class SettingsForm
     {
@@ -54,6 +54,7 @@
             PreloadFolderIconsToolTip = new System.Windows.Forms.ToolTip(components);
             SettingsToolTips = new System.Windows.Forms.ToolTip(components);
             AdvancedButton = new System.Windows.Forms.Button();
+            WindowsOptimizerButton = new System.Windows.Forms.Button();
             OptionsGroupBox.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)ThreadsNumericUpDown).BeginInit();
             ExtensionsGroupBox.SuspendLayout();
@@ -78,6 +79,7 @@
             // OptionsGroupBox
             // 
             OptionsGroupBox.BackColor = System.Drawing.SystemColors.ControlLightLight;
+            OptionsGroupBox.Controls.Add(WindowsOptimizerButton);
             OptionsGroupBox.Controls.Add(ThreadsLabel);
             OptionsGroupBox.Controls.Add(DefaultThreadsButton);
             OptionsGroupBox.Controls.Add(ThreadsNumericUpDown);
@@ -100,6 +102,17 @@
             SettingsToolTips.SetToolTip(DefaultThreadsButton, resources.GetString("DefaultThreadsButton.ToolTip"));
             DefaultThreadsButton.UseVisualStyleBackColor = true;
             DefaultThreadsButton.Click += DefaultThreadsButton_Click;
+            // 
+            // WindowsOptimizerButton
+            // 
+            WindowsOptimizerButton.Location = new System.Drawing.Point(255, 73);
+            WindowsOptimizerButton.Name = "WindowsOptimizerButton";
+            WindowsOptimizerButton.Size = new System.Drawing.Size(118, 27);
+            WindowsOptimizerButton.TabIndex = 9;
+            WindowsOptimizerButton.Text = "Optimize OS";
+            SettingsToolTips.SetToolTip(WindowsOptimizerButton, "Open Windows Optimizer to protect thumbnail cache, disable SMB Thumbs.db, and speed up Windows Explorer.");
+            WindowsOptimizerButton.UseVisualStyleBackColor = true;
+            WindowsOptimizerButton.Click += WindowsOptimizerButton_Click;
             // 
             // ThreadsNumericUpDown
             // 
@@ -240,6 +253,7 @@
         private System.Windows.Forms.ToolTip PreloadFolderIconsToolTip;
         private System.Windows.Forms.ToolTip SettingsToolTips;
         private System.Windows.Forms.Button AdvancedButton;
+        private System.Windows.Forms.Button WindowsOptimizerButton;
         private System.Windows.Forms.Button ExportButton;
         private System.Windows.Forms.Label label1;
     }
