@@ -188,5 +188,35 @@ namespace WinThumbsPreloader.Tests
             Assert.Equal(3, options.maxParallelInstances);
             Assert.Single(options.paths);
         }
+
+        [Fact]
+        public void Constructor_WithApplyOptimizationsFlag_SetsApplyOptimizationsAndStopsParsing()
+        {
+            // Arrange & Act
+            var options = new Options(["-apply-optimizations"]);
+
+            // Assert
+            Assert.True(options.applyOptimizations);
+        }
+
+        [Fact]
+        public void Constructor_WithRestoreDefaultsFlag_SetsRestoreDefaultsAndStopsParsing()
+        {
+            // Arrange & Act
+            var options = new Options(["-restore-defaults"]);
+
+            // Assert
+            Assert.True(options.restoreDefaults);
+        }
+
+        [Fact]
+        public void Constructor_WithReopenOptimizerFlag_SetsReopenOptimizerAndStopsParsing()
+        {
+            // Arrange & Act
+            var options = new Options(["-reopenoptimizer"]);
+
+            // Assert
+            Assert.True(options.reopenOptimizer);
+        }
     }
 }
