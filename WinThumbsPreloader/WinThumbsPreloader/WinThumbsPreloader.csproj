@@ -31,9 +31,9 @@
   </PropertyGroup>
   <PropertyGroup>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <AssemblyVersion>3.2.1</AssemblyVersion>
-    <Version>3.2.1</Version>
-    <FileVersion>3.2.1</FileVersion>
+    <AssemblyVersion>3.2.2</AssemblyVersion>
+    <Version>3.2.2</Version>
+    <FileVersion>3.2.2</FileVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
     <Nullable>warnings</Nullable>

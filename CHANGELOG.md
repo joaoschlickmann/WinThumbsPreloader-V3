@@ -4,6 +4,13 @@ All notable changes to **WinThumbsPreloader** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.2] - 2026-11-10
+
+### Fixed
+- **CI/CD Deterministic Lockfile Restore Across .NET 10 Servicing SDKs (`WinThumbsPreloader.csproj`, `packages.lock.json`, `SecurityHardeningTests`)**: Set `<PublishSingleFile>false</PublishSingleFile>` (matching the multi-file Inno Setup layout) to stop `EnableSingleFileAnalyzer` from injecting an SDK-servicing-bound `Microsoft.NET.ILLink.Tasks` package reference into `packages.lock.json`, resolving `NU1004` failures under fail-closed `dotnet restore --locked-mode` when GitHub Actions advances to newer `.NET 10.0.x` patch SDKs (`10.0.404` / `10.0.15`), and added a regression test guarding lockfiles against SDK-servicing pack coupling.
+
+---
+
 ## [3.2.1] - 2026-11-10
 
 ### Security
