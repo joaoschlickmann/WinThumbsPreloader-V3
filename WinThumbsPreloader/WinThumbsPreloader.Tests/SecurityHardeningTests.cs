@@ -469,5 +469,23 @@ namespace WinThumbsPreloader.Tests
             Assert.DoesNotContain("<RegisterForComInterop>true</RegisterForComInterop>", csprojContent, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("<NuGetAudit>true</NuGetAudit>", csprojContent, StringComparison.OrdinalIgnoreCase);
         }
+
+        [Fact]
+        public void LockFiles_DoNotCoupleToFloatingSdkServicingPacks()
+        {
+            string repoRoot = FindRepoRoot();
+            string csprojContent = File.ReadAllText(Path.Combine(repoRoot, "WinThumbsPreloader", "WinThumbsPreloader", "WinThumbsPreloader.csproj"));
+            string appLockFile = File.ReadAllText(Path.Combine(repoRoot, "WinThumbsPreloader", "WinThumbsPreloader", "packages.lock.json"));
+            string testLockFile = File.ReadAllText(Path.Combine(repoRoot, "WinThumbsPreloader", "WinThumbsPreloader.Tests", "packages.lock.json"));
+
+            // Inno Setup packages the multi-file Release\win-x64 output directory directly.
+            // Keeping PublishSingleFile enabled triggers EnableSingleFileAnalyzer -> _RequiresILLinkPack,
+            // injecting an SDK-servicing-bound Microsoft.NET.ILLink.Tasks entry into packages.lock.json
+            // that breaks `dotnet restore --locked-mode` (NU1004) whenever CI advances to a newer .NET 10.0.x patch SDK.
+            Assert.DoesNotContain("<PublishSingleFile>true</PublishSingleFile>", csprojContent, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Microsoft.NET.ILLink.Tasks", appLockFile, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Microsoft.DotNet.ILCompiler", appLockFile, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Microsoft.NET.ILLink.Tasks", testLockFile, StringComparison.OrdinalIgnoreCase);
+        }
     }
 }
