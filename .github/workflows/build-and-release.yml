@@ -26,6 +26,9 @@ on:
 permissions:
   contents: read
 
+env:
+  DOTNET_CLI_UI_LANGUAGE: en
+
 jobs:
   build-installer:
     name: Test, Audit, Build & Package (Inno Setup)
@@ -115,9 +118,8 @@ jobs:
         run: |
           dotnet restore WinThumbsPreloader/WinThumbsPreloader.sln --locked-mode
           if ($LASTEXITCODE -ne 0) {
-            Write-Warning "packages.lock.json is out of sync with .csproj; re-evaluating lockfile..."
-            dotnet restore WinThumbsPreloader/WinThumbsPreloader.sln --use-lock-file --force-evaluate
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Error "Lockfile restore failed: packages.lock.json is out of sync with .csproj."
+            exit $LASTEXITCODE
           }
 
       - name: Audit NuGet dependencies for vulnerabilities
@@ -125,7 +127,7 @@ jobs:
         run: |
           $auditOutput = dotnet list WinThumbsPreloader/WinThumbsPreloader.sln package --vulnerable --include-transitive | Out-String
           Write-Host $auditOutput
-          if ($auditOutput -match "Critical|High|Moderate") {
+          if ($LASTEXITCODE -ne 0 -or $auditOutput -match "has the following vulnerable packages|Critical|High|Moderate") {
             Write-Error "Vulnerable NuGet packages detected!"
             exit 1
           }
@@ -155,7 +157,13 @@ jobs:
             }
           }
 
-          Write-Host "Compiling InnoSetup/installer.iss using $iscc..."
+          $isccSig = Get-AuthenticodeSignature -FilePath $iscc
+          if ($isccSig.Status -ne 'Valid') {
+            Write-Error "Authenticode signature verification failed for ISCC.exe at '$iscc' (Status: $($isccSig.Status))."
+            exit 1
+          }
+
+          Write-Host "Compiling InnoSetup/installer.iss using $iscc (Signed by: $($isccSig.SignerCertificate.Subject))..."
           & $iscc "InnoSetup\installer.iss"
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Inno Setup compilation failed with exit code $LASTEXITCODE"

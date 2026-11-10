@@ -8,6 +8,9 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>moderate</NuGetAuditLevel>
   </PropertyGroup>
 
   <ItemGroup>
