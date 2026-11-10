@@ -55,7 +55,7 @@ Building upon the foundation of **v1** (core preloading and Explorer context men
 - **Shared-ReadWrite Live Backup & Restore**: Uses `FileShare.ReadWrite | FileShare.Delete` streams and orders `thumbcache_*.db` writes prior to `thumbcache_idx.db`, enabling reliable backups and restores even when `explorer.exe`, `dllhost.exe`, or third-party File Open/Save dialogs hold open handles to cache files.
 - **Smart Bucket Spillover & `WTS_SLOWRECLAIM` Retention**: Requests `WTS_SLOWRECLAIM` to populate `thumbcache_sr.db` alongside standard streams and automatically spills over to the next unsaturated Windows cache bucket (`256 → 768 → 1280 → 1920 → 2560`) when a single `.db` file reaches the 1.6 GB soft ceiling.
 - **Elevated Mapped-Drive & UNC Resolver**: Resolves mapped network drive letters (`Z:\`, etc.) across UAC elevation boundaries via `WNetGetUniversalNameW` and `HKCU\Network` so scheduled or elevated tasks work seamlessly on NAS/SMB shares.
-- **Automated Test Suite**: Includes a 65-test xUnit suite (`WinThumbsPreloader.Tests`) covering STA COM concurrency, binary `CMMM`/`IMMM` sanitization, cross-process backup locks, bucket spillover, and CLI/scheduler logic.
+- **Automated Test Suite**: Includes a 124-test xUnit suite (`WinThumbsPreloader.Tests`) covering STA COM concurrency, binary `CMMM`/`IMMM` sanitization, cross-process backup locks, bucket spillover, security hardening, and visual E2E GUI flows.
 
 ---
 
@@ -96,7 +96,7 @@ Building upon the foundation of **v1** (core preloading and Explorer context men
 ## Installation
 
 ### Option 1: Installer (Recommended)
-1. Run `WinThumbsPreloader-3.0.0-setup.exe` (located in `InnoSetup/Output/` when compiled locally, or from the [Releases page](https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases)).
+1. Run `WinThumbsPreloader-3.2.1-setup.exe` (located in `InnoSetup/Output/` when compiled locally, or from the [Releases page](https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases)).
 2. The installer registers the Windows Explorer right-click context menus for **Folders**, **Folder Backgrounds**, and **Drives**, configures `SilentCleanup` cache protection, and adds `WinThumbsPreloader` to your system `PATH`.
 
 ### Option 2: Standalone Executable
@@ -166,13 +166,13 @@ WinThumbsPreloader uses the native Windows Shell thumbnail providers installed o
 ### Build & Test Commands
 
 ```powershell
-# Restore, build, and run all 65 unit and integration tests
+# Restore, build, and run all 124 unit, integration, security, and visual E2E tests
 dotnet test "WinThumbsPreloader\WinThumbsPreloader.sln"
 
 # Build Release binaries (win-x64)
 dotnet build "WinThumbsPreloader\WinThumbsPreloader.sln" -c Release
 
-# Compile the Inno Setup installer (outputs to InnoSetup\Output\WinThumbsPreloader-3.0.0-setup.exe)
+# Compile the Inno Setup installer (outputs to InnoSetup\Output\WinThumbsPreloader-3.2.1-setup.exe)
 ISCC.exe "InnoSetup\installer.iss"
 ```
 
