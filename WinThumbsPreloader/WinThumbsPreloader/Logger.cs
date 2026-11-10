@@ -469,12 +469,11 @@ namespace WinThumbsPreloader
 
                 foreach (FileInfo file in GetLogFilesNoLock(directory))
                 {
-                    try
+                    if (TryDeleteFile(file))
                     {
-                        file.Delete();
                         deletedCount++;
                     }
-                    catch
+                    else
                     {
                         failedCount++;
                     }
@@ -615,7 +614,17 @@ namespace WinThumbsPreloader
 
             try
             {
-                Directory.CreateDirectory(directory);
+                if (PathSecurity.HasReparsePointOrJunctionInPath(directory, rejectAnyLeafOrParentReparsePoint: false) ||
+                    PathSecurity.IsReparsePoint(directory))
+                {
+                    throw new IOException("Refusing to write log files inside a reparse-point or junction directory.");
+                }
+
+                DirectoryInfo dirInfo = Directory.CreateDirectory(directory);
+                if ((dirInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    throw new IOException("Refusing to write log files inside a reparse-point directory.");
+                }
 
                 int processId = Environment.ProcessId;
                 DateTime now = DateTime.Now;
@@ -834,6 +843,13 @@ namespace WinThumbsPreloader
         {
             try
             {
+                file.Refresh();
+                if ((file.Attributes & FileAttributes.ReparsePoint) != 0 ||
+                    PathSecurity.HasReparsePointOrJunctionInPath(file.FullName))
+                {
+                    return false;
+                }
+
                 file.Delete();
                 return true;
             }

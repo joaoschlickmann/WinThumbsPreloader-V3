@@ -147,6 +147,9 @@ Root: "HKCU"; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType
 [Code]
 const
   EVENT_MODIFY_STATE = $0002;
+  WTP_INVALID_FILE_ATTRIBUTES = $FFFFFFFF;
+  WTP_FILE_ATTRIBUTE_DIRECTORY = $0010;
+  WTP_FILE_ATTRIBUTE_REPARSE_POINT = $0400;
 
 function OpenEventW(dwDesiredAccess: Cardinal; bInheritHandle: BOOL; lpName: string): THandle;
   external 'OpenEventW@kernel32.dll stdcall';
@@ -154,17 +157,19 @@ function SetEvent(hEvent: THandle): BOOL;
   external 'SetEvent@kernel32.dll stdcall';
 function CloseHandle(hObject: THandle): BOOL;
   external 'CloseHandle@kernel32.dll stdcall';
+function GetFileAttributesW(lpFileName: string): Cardinal;
+  external 'GetFileAttributesW@kernel32.dll stdcall';
 
 procedure SignalRunningInstanceShutdown();
 var
   EventHandle: THandle;
 begin
-  EventHandle := OpenEventW(EVENT_MODIFY_STATE, False, 'Local\{#MyAppName}_{#MyAppId}_Shutdown');
+  EventHandle := OpenEventW(EVENT_MODIFY_STATE, False, 'Local\{#MyAppName}_SingleInstance_v3_{#MyAppId}_Shutdown');
   if EventHandle <> 0 then
   begin
     SetEvent(EventHandle);
     CloseHandle(EventHandle);
-    Sleep(250);
+    Sleep(350);
   end;
 end;
 
@@ -186,10 +191,81 @@ begin
   Result := RemoveBackslashUnlessRoot(Trim(RemoveQuotes(DirPath)));
 end;
 
+function IsReparsePointPath(const PathValue: string): Boolean;
+var
+  Attr: Cardinal;
+begin
+  Attr := GetFileAttributesW(PathValue);
+  Result := (Attr <> WTP_INVALID_FILE_ATTRIBUTES) and ((Attr and WTP_FILE_ATTRIBUTE_REPARSE_POINT) <> 0);
+end;
+
+function HasNoReparsePointInHierarchy(const TargetPath: string): Boolean;
+var
+  Current, ParentDir: string;
+begin
+  Current := NormalizeDirPath(TargetPath);
+  if Current = '' then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  Result := True;
+  while Length(Current) > 3 do
+  begin
+    if IsReparsePointPath(Current) then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    ParentDir := NormalizeDirPath(ExtractFileDir(Current));
+    if (ParentDir = '') or (CompareText(ParentDir, Current) = 0) then
+      Break;
+    Current := ParentDir;
+  end;
+end;
+
+procedure DeleteFileIfSafeRegular(const FilePath: string);
+var
+  Attr: Cardinal;
+begin
+  if (FilePath = '') or (not HasNoReparsePointInHierarchy(ExtractFileDir(FilePath))) then
+    Exit;
+
+  Attr := GetFileAttributesW(FilePath);
+  if Attr = WTP_INVALID_FILE_ATTRIBUTES then
+    Exit;
+
+  if ((Attr and WTP_FILE_ATTRIBUTE_DIRECTORY) = 0) and ((Attr and WTP_FILE_ATTRIBUTE_REPARSE_POINT) = 0) then
+    DeleteFile(FilePath);
+end;
+
+procedure DeleteUninstallerArtifactsIfSafe(const DirPath: string);
+var
+  FindRec: TFindRec;
+  FullFilePath: string;
+begin
+  if FindFirst(AddBackslash(DirPath) + 'unins00*.*', FindRec) then
+  begin
+    try
+      repeat
+        if ((FindRec.Attributes and WTP_FILE_ATTRIBUTE_DIRECTORY) = 0) and
+           ((FindRec.Attributes and WTP_FILE_ATTRIBUTE_REPARSE_POINT) = 0) then
+        begin
+          FullFilePath := AddBackslash(DirPath) + FindRec.Name;
+          DeleteFileIfSafeRegular(FullFilePath);
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
 procedure CleanupAlternateDirectory(const CandidateDir, CanonicalDir: string);
 var
-  NormCandidate, NormCanonical, UninsExe: string;
-  ResultCode: Integer;
+  NormCandidate, NormCanonical, LangDir, RuLangDir: string;
 begin
   NormCandidate := NormalizeDirPath(CandidateDir);
   NormCanonical := NormalizeDirPath(CanonicalDir);
@@ -197,25 +273,62 @@ begin
   if (NormCandidate = '') or (Length(NormCandidate) <= 3) or (CompareText(NormCandidate, NormCanonical) = 0) then
     Exit;
 
-  if DirExists(NormCandidate) then
-  begin
-    UninsExe := AddBackslash(NormCandidate) + 'unins000.exe';
-    if FileExists(UninsExe) then
-      Exec(UninsExe, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if CompareText(ExtractFileName(NormCandidate), '{#MyAppName}') <> 0 then
+    Exit;
 
-    DelTree(NormCandidate, True, True, True);
+  if (not DirExists(NormCandidate)) or (not HasNoReparsePointInHierarchy(NormCandidate)) then
+    Exit;
+
+  { Delete only allowlisted application files without executing untrusted binaries or traversing reparse points }
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + '{#MyAppFilename}');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + '{#MyAppName}.dll');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + '{#MyAppName}.deps.json');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + '{#MyAppName}.runtimeconfig.json');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + '{#MyAppName}.dll.config');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + '{#MyAppName}.exe.config');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'Microsoft.Win32.TaskScheduler.dll');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'LICENSE.txt');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'icon.ico');
+  DeleteUninstallerArtifactsIfSafe(NormCandidate);
+
+  LangDir := AddBackslash(NormCandidate) + 'Languages';
+  RuLangDir := AddBackslash(LangDir) + 'ru';
+  if DirExists(RuLangDir) and HasNoReparsePointInHierarchy(RuLangDir) then
+  begin
+    DeleteFileIfSafeRegular(AddBackslash(RuLangDir) + '{#MyAppName}.resources.dll');
+    RemoveDir(RuLangDir);
   end;
+
+  if DirExists(LangDir) and HasNoReparsePointInHierarchy(LangDir) then
+    RemoveDir(LangDir);
+
+  RemoveDir(NormCandidate);
 end;
 
-procedure CheckAndRemoveUninstallLocation(const RootKey: Integer; const SubKey, CanonicalDir: string);
+procedure CheckAndRemoveMachineUninstallLocation(const RootKey: Integer; const SubKey, CanonicalDir: string);
 var
   OldDir: string;
 begin
+  if (RootKey <> HKLM) and (RootKey <> HKLM32) then
+    Exit;
+
   if RegQueryStringValue(RootKey, SubKey, 'InstallLocation', OldDir) then
     CleanupAlternateDirectory(OldDir, CanonicalDir);
 
   if RegQueryStringValue(RootKey, SubKey, 'Inno Setup: App Path', OldDir) then
     CleanupAlternateDirectory(OldDir, CanonicalDir);
+end;
+
+procedure CleanupLegacyUserStartMenuFolder(const FolderPath: string);
+var
+  NormFolder: string;
+begin
+  NormFolder := NormalizeDirPath(FolderPath);
+  if (NormFolder = '') or (not DirExists(NormFolder)) or (not HasNoReparsePointInHierarchy(NormFolder)) then
+    Exit;
+
+  DeleteFileIfSafeRegular(AddBackslash(NormFolder) + '{#MyAppName}.lnk');
+  RemoveDir(NormFolder);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -231,23 +344,21 @@ begin
   { 2. Force-terminate any remaining preloader/GUI processes (including legacy v3.1.x instances) }
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM "{#MyAppFilename}"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
-  { 3. Remove any previous installation located in a different directory }
-  CheckAndRemoveUninstallLocation(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1', CanonicalDir);
-  CheckAndRemoveUninstallLocation(HKLM32, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1', CanonicalDir);
-  CheckAndRemoveUninstallLocation(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1', CanonicalDir);
-  CheckAndRemoveUninstallLocation(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}_is1', CanonicalDir);
+  { 3. Clean machine-owned previous installation paths (never execute or DelTree paths from HKCU) }
+  CheckAndRemoveMachineUninstallLocation(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1', CanonicalDir);
+  CheckAndRemoveMachineUninstallLocation(HKLM32, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1', CanonicalDir);
 
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppName}_is1');
 
-  { 4. Remove non-canonical per-user or 32-bit installations }
+  { 4. Safely remove known files from non-canonical per-user or 32-bit installations }
   CleanupAlternateDirectory(ExpandConstant('{localappdata}\Programs\{#MyAppName}'), CanonicalDir);
   CleanupAlternateDirectory(ExpandConstant('{commonpf32}\{#MyAppName}'), CanonicalDir);
 
-  { 5. Remove duplicate per-user Start Menu or Desktop shortcuts }
-  DeleteFile(ExpandConstant('{userprograms}\{#MyAppName}.lnk'));
-  DelTree(ExpandConstant('{userprograms}\{#MyAppName}'), True, True, True);
-  DeleteFile(ExpandConstant('{userdesktop}\{#MyAppName}.lnk'));
+  { 5. Safely remove duplicate per-user Start Menu or Desktop shortcuts }
+  DeleteFileIfSafeRegular(ExpandConstant('{userprograms}\{#MyAppName}.lnk'));
+  CleanupLegacyUserStartMenuFolder(ExpandConstant('{userprograms}\{#MyAppName}'));
+  DeleteFileIfSafeRegular(ExpandConstant('{userdesktop}\{#MyAppName}.lnk'));
 
   Result := '';
 end;

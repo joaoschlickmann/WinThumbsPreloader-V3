@@ -679,6 +679,8 @@ namespace WinThumbsPreloader
             return Path.Combine(baseLocalAppData, "WinThumbsPreloader", "Updates", PostUpdateLaunchMarkerFileName);
         }
 
+        private const long MaxPostUpdateMarkerBytes = 4096;
+
         public static void WritePostUpdateLaunchMarker(bool restartMinimized, string markerFilePath = null)
         {
             try
@@ -690,10 +692,16 @@ namespace WinThumbsPreloader
                 string dir = Path.GetDirectoryName(path);
                 if (!string.IsNullOrWhiteSpace(dir))
                 {
+                    if (PathSecurity.HasReparsePointOrJunctionInPath(dir))
+                        return;
+
                     DirectoryInfo dirInfo = Directory.CreateDirectory(dir);
                     if ((dirInfo.Attributes & FileAttributes.ReparsePoint) != 0)
                         return;
                 }
+
+                if (PathSecurity.HasReparsePointOrJunctionInPath(path))
+                    return;
 
                 string mode = restartMinimized ? "minimized" : "normal";
                 string payload = $"{mode}|{DateTime.UtcNow.Ticks}";
@@ -713,6 +721,9 @@ namespace WinThumbsPreloader
                     ? GetDefaultPostUpdateLaunchMarkerPath()
                     : markerFilePath;
 
+                if (PathSecurity.HasReparsePointOrJunctionInPath(path))
+                    return;
+
                 if (File.Exists(path))
                     File.Delete(path);
             }
@@ -730,7 +741,7 @@ namespace WinThumbsPreloader
                     ? GetDefaultPostUpdateLaunchMarkerPath()
                     : markerFilePath;
 
-                if (!File.Exists(path))
+                if (!PathSecurity.IsSafeRegularFileWithinLimit(path, MaxPostUpdateMarkerBytes, out _))
                     return false;
 
                 string content = File.ReadAllText(path, Encoding.UTF8).Trim();

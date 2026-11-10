@@ -78,7 +78,9 @@ namespace WinThumbsPreloader
             if (options.applyOptimizations)
             {
                 WriteLine("Applying Windows optimizations via CLI helper.", LoggingFrequency.AllLogging);
-                var profile = WindowsOptimizer.OptimizationProfile.LoadFromSettings();
+                var profile = options.hasExplicitOptimizationProfile
+                    ? WindowsOptimizer.OptimizationProfile.FromBitMask(options.optimizationProfileMask, options.optimizationIconCacheKb)
+                    : WindowsOptimizer.OptimizationProfile.LoadFromSettings();
                 WindowsOptimizer.ApplyOptimizations(profile, broadcastShellChange: true);
                 return;
             }

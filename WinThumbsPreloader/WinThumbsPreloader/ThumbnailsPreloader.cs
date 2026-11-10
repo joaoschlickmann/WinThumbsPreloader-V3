@@ -581,8 +581,9 @@ namespace WinThumbsPreloader
                 var preloaderStopWatch = Stopwatch.StartNew();
 
                 int workerCount = multiThreaded ? Math.Max(1, threads) : 1;
-                var channel = Channel.CreateUnbounded<ScannedItem>(new UnboundedChannelOptions
+                var channel = Channel.CreateBounded<ScannedItem>(new BoundedChannelOptions(65536)
                 {
+                    FullMode = BoundedChannelFullMode.Wait,
                     SingleWriter = !multiThreaded || !includeNestedDirectories,
                     SingleReader = workerCount == 1
                 });
@@ -591,7 +592,7 @@ namespace WinThumbsPreloader
                 var scanStopwatch = Stopwatch.StartNew();
                 Task producerTask = Task.Run(() =>
                 {
-                    directoryScanner.ScanToChannel(channel.Writer);
+                    directoryScanner.ScanToChannel(channel.Writer, finishDelayCts.Token);
                     scanStopwatch.Stop();
                     WriteLine($"Directory scanning completed in {scanStopwatch.Elapsed.TotalSeconds:F2} seconds. Total items: {directoryScanner.totalItemsCount}", LoggingFrequency.PreloaderLogging);
                 });

@@ -26,6 +26,8 @@ namespace WinThumbsPreloader
     [SupportedOSPlatform("windows")]
     sealed class DirectoryScanner
     {
+        public const int MaxDirectoryDepth = 128;
+
         public volatile bool cancelled = false;
         public int totalItemsCount = 0;
         public volatile bool scanCompleted = false;
@@ -41,8 +43,8 @@ namespace WinThumbsPreloader
         private readonly HashSet<string> thumbnailExtensions;
         private readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> thumbnailExtensionsSpanLookup;
         private readonly FileSystemEnumerable<bool>.FindPredicate matchFileOnlyPredicate;
-        private readonly FileSystemEnumerable<(string Name, bool IsDirectory)>.FindPredicate includeDirsPredicate;
-        private readonly FileSystemEnumerable<(string Name, bool IsDirectory)>.FindPredicate filesOnlyPredicate;
+        private readonly FileSystemEnumerable<(string Name, bool IsDirectory, bool IsReparsePoint)>.FindPredicate includeDirsPredicate;
+        private readonly FileSystemEnumerable<(string Name, bool IsDirectory, bool IsReparsePoint)>.FindPredicate filesOnlyPredicate;
 
         public DirectoryScanner(string path, bool includeNestedDirectories, bool multiThreaded, int threadCount)
         {
@@ -98,21 +100,21 @@ namespace WinThumbsPreloader
         /// Streams discovered items directly into a bounded/unbounded ChannelWriter so consumers can start
         /// extracting thumbnails immediately while directory enumeration is still running.
         /// </summary>
-        public void ScanToChannel(ChannelWriter<ScannedItem> writer)
+        public void ScanToChannel(ChannelWriter<ScannedItem> writer, CancellationToken cancellationToken = default)
         {
             try
             {
                 if (!includeNestedDirectories)
                 {
-                    ScanFirstLevelToChannel(writer);
+                    ScanFirstLevelToChannel(writer, cancellationToken);
                 }
                 else if (multiThreaded)
                 {
-                    ScanNestedParallelToChannel(writer);
+                    ScanNestedParallelToChannel(writer, cancellationToken);
                 }
                 else
                 {
-                    ScanNestedSequentialToChannel(writer);
+                    ScanNestedSequentialToChannel(writer, cancellationToken);
                 }
             }
             finally
@@ -120,6 +122,41 @@ namespace WinThumbsPreloader
                 scanCompleted = true;
                 writer.TryComplete();
             }
+        }
+
+        private bool TryEnqueueScannedItem(ChannelWriter<ScannedItem> writer, in ScannedItem item, CancellationToken cancellationToken)
+        {
+            if (writer.TryWrite(item))
+            {
+                Interlocked.Increment(ref totalItemsCount);
+                return true;
+            }
+
+            try
+            {
+                while (!cancelled && !cancellationToken.IsCancellationRequested)
+                {
+                    ValueTask<bool> waitTask = writer.WaitToWriteAsync(cancellationToken);
+                    bool canWrite = waitTask.IsCompletedSuccessfully
+                        ? waitTask.Result
+                        : waitTask.AsTask().GetAwaiter().GetResult();
+
+                    if (!canWrite)
+                        return false;
+
+                    if (writer.TryWrite(item))
+                    {
+                        Interlocked.Increment(ref totalItemsCount);
+                        return true;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled = true;
+            }
+
+            return false;
         }
 
         public string[] GetItems()
@@ -189,21 +226,24 @@ namespace WinThumbsPreloader
             return false;
         }
 
-        private FileSystemEnumerable<(string Name, bool IsDirectory)> CreateDirectoryEnumerable(
+        private FileSystemEnumerable<(string Name, bool IsDirectory, bool IsReparsePoint)> CreateDirectoryEnumerable(
             string directoryPath,
             EnumerationOptions enumOptions,
             bool includeDirectories)
         {
-            return new FileSystemEnumerable<(string Name, bool IsDirectory)>(
+            return new FileSystemEnumerable<(string Name, bool IsDirectory, bool IsReparsePoint)>(
                 directoryPath,
-                static (ref FileSystemEntry entry) => (entry.FileName.ToString(), entry.IsDirectory),
+                static (ref FileSystemEntry entry) => (
+                    entry.FileName.ToString(),
+                    entry.IsDirectory,
+                    (entry.Attributes & FileAttributes.ReparsePoint) != 0),
                 enumOptions)
             {
                 ShouldIncludePredicate = includeDirectories ? includeDirsPredicate : filesOnlyPredicate
             };
         }
 
-        private void ScanFirstLevelToChannel(ChannelWriter<ScannedItem> writer)
+        private void ScanFirstLevelToChannel(ChannelWriter<ScannedItem> writer, CancellationToken cancellationToken)
         {
             WriteLine("Scanning items for only first level", LoggingFrequency.PreloaderLogging);
 
@@ -218,9 +258,9 @@ namespace WinThumbsPreloader
             {
                 string rootFullName = Path.GetFullPath(path);
 
-                foreach (var (name, isDirectory) in CreateDirectoryEnumerable(rootFullName, enumOptions, preloadFolderIcons))
+                foreach (var (name, isDirectory, _) in CreateDirectoryEnumerable(rootFullName, enumOptions, preloadFolderIcons))
                 {
-                    if (cancelled)
+                    if (cancelled || cancellationToken.IsCancellationRequested)
                         break;
 
                     string entryFullName = Path.Join(rootFullName, name);
@@ -229,8 +269,7 @@ namespace WinThumbsPreloader
                     {
                         if (preloadAllFolders)
                         {
-                            writer.TryWrite(new ScannedItem(entryFullName, rootFullName, name, true, isNetworkPath));
-                            Interlocked.Increment(ref totalItemsCount);
+                            TryEnqueueScannedItem(writer, new ScannedItem(entryFullName, rootFullName, name, true, isNetworkPath), cancellationToken);
                             continue;
                         }
 
@@ -238,8 +277,7 @@ namespace WinThumbsPreloader
                         {
                             if (DirectoryContainsMatchingFile(entryFullName, enumOptions))
                             {
-                                writer.TryWrite(new ScannedItem(entryFullName, rootFullName, name, true, isNetworkPath));
-                                Interlocked.Increment(ref totalItemsCount);
+                                TryEnqueueScannedItem(writer, new ScannedItem(entryFullName, rootFullName, name, true, isNetworkPath), cancellationToken);
                             }
                         }
                         catch (Exception e)
@@ -249,8 +287,7 @@ namespace WinThumbsPreloader
                     }
                     else
                     {
-                        writer.TryWrite(new ScannedItem(entryFullName, rootFullName, name, false, isNetworkPath));
-                        Interlocked.Increment(ref totalItemsCount);
+                        TryEnqueueScannedItem(writer, new ScannedItem(entryFullName, rootFullName, name, false, isNetworkPath), cancellationToken);
                     }
                 }
             }
@@ -260,44 +297,72 @@ namespace WinThumbsPreloader
             }
         }
 
-        private void ScanNestedSequentialToChannel(ChannelWriter<ScannedItem> writer)
+        private void ScanNestedSequentialToChannel(ChannelWriter<ScannedItem> writer, CancellationToken cancellationToken)
         {
             WriteLine("Scanning items for nested directories sequentially", LoggingFrequency.PreloaderLogging);
 
             var enumOptions = new EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = 0 };
-            var queue = new Queue<(string FullPath, string? ParentPath, string? FolderName)>();
-            string rootFullName = Path.GetFullPath(path);
-            queue.Enqueue((rootFullName, Path.GetDirectoryName(rootFullName), Path.GetFileName(rootFullName)));
+            var queue = new Queue<(string FullPath, string CanonicalKey, string? ParentPath, string? FolderName, int Depth)>();
+            var visitedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            while (queue.Count > 0 && !cancelled)
+            string rootFullName = Path.GetFullPath(path);
+            string rootCanonical = PathSecurity.TryGetCanonicalPathKey(rootFullName, out string? rk) && rk != null
+                ? rk
+                : PathSecurity.NormalizePathKey(rootFullName);
+
+            visitedTargets.Add(PathSecurity.NormalizePathKey(rootFullName));
+            visitedTargets.Add(rootCanonical);
+            queue.Enqueue((rootFullName, rootCanonical, Path.GetDirectoryName(rootFullName), Path.GetFileName(rootFullName), 0));
+
+            while (queue.Count > 0 && !cancelled && !cancellationToken.IsCancellationRequested)
             {
-                var (currentPath, parentPath, folderName) = queue.Dequeue();
+                var (currentPath, currentCanonical, parentPath, folderName, depth) = queue.Dequeue();
                 bool directoryContainsThumbnail = false;
 
                 try
                 {
-                    foreach (var (name, isDirectory) in CreateDirectoryEnumerable(currentPath, enumOptions, includeDirectories: true))
+                    foreach (var (name, isDirectory, isReparsePoint) in CreateDirectoryEnumerable(currentPath, enumOptions, includeDirectories: true))
                     {
-                        if (cancelled) break;
+                        if (cancelled || cancellationToken.IsCancellationRequested) break;
 
                         string entryFullName = Path.Join(currentPath, name);
 
                         if (isDirectory)
                         {
-                            queue.Enqueue((entryFullName, currentPath, name));
+                            int nextDepth = depth + 1;
+                            if (nextDepth > MaxDirectoryDepth)
+                                continue;
+
+                            string childCanonical;
+                            if (isReparsePoint)
+                            {
+                                if (!PathSecurity.TryGetCanonicalPathKey(entryFullName, out string? resolvedKey) || string.IsNullOrEmpty(resolvedKey))
+                                    continue;
+
+                                childCanonical = resolvedKey;
+                            }
+                            else
+                            {
+                                childCanonical = PathSecurity.NormalizePathKey(Path.Join(currentCanonical, name));
+                            }
+
+                            if (!visitedTargets.Add(childCanonical))
+                                continue;
+
+                            queue.Enqueue((entryFullName, childCanonical, currentPath, name, nextDepth));
                         }
                         else
                         {
-                            writer.TryWrite(new ScannedItem(entryFullName, currentPath, name, false, isNetworkPath));
-                            Interlocked.Increment(ref totalItemsCount);
-                            directoryContainsThumbnail = true;
+                            if (TryEnqueueScannedItem(writer, new ScannedItem(entryFullName, currentPath, name, false, isNetworkPath), cancellationToken))
+                            {
+                                directoryContainsThumbnail = true;
+                            }
                         }
                     }
 
-                    if (!cancelled && preloadFolderIcons && (directoryContainsThumbnail || preloadAllFolders))
+                    if (!cancelled && !cancellationToken.IsCancellationRequested && preloadFolderIcons && (directoryContainsThumbnail || preloadAllFolders))
                     {
-                        writer.TryWrite(new ScannedItem(currentPath, parentPath, folderName, true, isNetworkPath));
-                        Interlocked.Increment(ref totalItemsCount);
+                        TryEnqueueScannedItem(writer, new ScannedItem(currentPath, parentPath, folderName, true, isNetworkPath), cancellationToken);
                     }
                 }
                 catch (Exception e)
@@ -307,7 +372,7 @@ namespace WinThumbsPreloader
             }
         }
 
-        private void ScanNestedParallelToChannel(ChannelWriter<ScannedItem> writer)
+        private void ScanNestedParallelToChannel(ChannelWriter<ScannedItem> writer, CancellationToken cancellationToken)
         {
             // Cap SMB directory enumeration concurrency to avoid overwhelming network shares while keeping local NVMe at full speed
             int scannerDegree = isNetworkPath ? Math.Clamp(threadCount, 2, 8) : threadCount;
@@ -315,9 +380,17 @@ namespace WinThumbsPreloader
 
             var enumOptions = new EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = 0 };
             string rootFullName = Path.GetFullPath(path);
-            using var directoriesToProcess = new BlockingCollection<(string FullPath, string? ParentPath, string? FolderName)>
+            string rootCanonical = PathSecurity.TryGetCanonicalPathKey(rootFullName, out string? rk) && rk != null
+                ? rk
+                : PathSecurity.NormalizePathKey(rootFullName);
+
+            var visitedTargets = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
+            visitedTargets.TryAdd(PathSecurity.NormalizePathKey(rootFullName), 0);
+            visitedTargets.TryAdd(rootCanonical, 0);
+
+            using var directoriesToProcess = new BlockingCollection<(string FullPath, string CanonicalKey, string? ParentPath, string? FolderName, int Depth)>
             {
-                (rootFullName, Path.GetDirectoryName(rootFullName), Path.GetFileName(rootFullName))
+                (rootFullName, rootCanonical, Path.GetDirectoryName(rootFullName), Path.GetFileName(rootFullName), 0)
             };
             int pendingWork = 1;
 
@@ -341,7 +414,7 @@ namespace WinThumbsPreloader
                 {
                     try
                     {
-                        if (cancelled || loopState.ShouldExitCurrentIteration)
+                        if (cancelled || cancellationToken.IsCancellationRequested || loopState.ShouldExitCurrentIteration)
                         {
                             AbortRemainingQueue();
                             loopState.Stop();
@@ -353,10 +426,12 @@ namespace WinThumbsPreloader
                         try
                         {
                             string dirFullName = currentDir.FullPath;
+                            string dirCanonical = currentDir.CanonicalKey;
+                            int currentDepth = currentDir.Depth;
 
-                            foreach (var (name, isDirectory) in CreateDirectoryEnumerable(dirFullName, enumOptions, includeDirectories: true))
+                            foreach (var (name, isDirectory, isReparsePoint) in CreateDirectoryEnumerable(dirFullName, enumOptions, includeDirectories: true))
                             {
-                                if (cancelled || loopState.ShouldExitCurrentIteration)
+                                if (cancelled || cancellationToken.IsCancellationRequested || loopState.ShouldExitCurrentIteration)
                                 {
                                     AbortRemainingQueue();
                                     loopState.Stop();
@@ -367,10 +442,30 @@ namespace WinThumbsPreloader
 
                                 if (isDirectory)
                                 {
+                                    int nextDepth = currentDepth + 1;
+                                    if (nextDepth > MaxDirectoryDepth)
+                                        continue;
+
+                                    string childCanonical;
+                                    if (isReparsePoint)
+                                    {
+                                        if (!PathSecurity.TryGetCanonicalPathKey(entryFullName, out string? resolvedKey) || string.IsNullOrEmpty(resolvedKey))
+                                            continue;
+
+                                        childCanonical = resolvedKey;
+                                    }
+                                    else
+                                    {
+                                        childCanonical = PathSecurity.NormalizePathKey(Path.Join(dirCanonical, name));
+                                    }
+
+                                    if (!visitedTargets.TryAdd(childCanonical, 0))
+                                        continue;
+
                                     Interlocked.Increment(ref pendingWork);
                                     try
                                     {
-                                        directoriesToProcess.Add((entryFullName, dirFullName, name));
+                                        directoriesToProcess.Add((entryFullName, childCanonical, dirFullName, name, nextDepth));
                                     }
                                     catch (InvalidOperationException)
                                     {
@@ -379,9 +474,10 @@ namespace WinThumbsPreloader
                                 }
                                 else
                                 {
-                                    writer.TryWrite(new ScannedItem(entryFullName, dirFullName, name, false, isNetworkPath));
-                                    Interlocked.Increment(ref totalItemsCount);
-                                    directoryContainsThumbnail = true;
+                                    if (TryEnqueueScannedItem(writer, new ScannedItem(entryFullName, dirFullName, name, false, isNetworkPath), cancellationToken))
+                                    {
+                                        directoryContainsThumbnail = true;
+                                    }
                                 }
                             }
                         }
@@ -390,10 +486,9 @@ namespace WinThumbsPreloader
                             WriteLine("Exception thrown while scanning directory: " + e.Message, LoggingFrequency.DebugLogging);
                         }
 
-                        if (!cancelled && preloadFolderIcons && (directoryContainsThumbnail || preloadAllFolders))
+                        if (!cancelled && !cancellationToken.IsCancellationRequested && preloadFolderIcons && (directoryContainsThumbnail || preloadAllFolders))
                         {
-                            writer.TryWrite(new ScannedItem(currentDir.FullPath, currentDir.ParentPath, currentDir.FolderName, true, isNetworkPath));
-                            Interlocked.Increment(ref totalItemsCount);
+                            TryEnqueueScannedItem(writer, new ScannedItem(currentDir.FullPath, currentDir.ParentPath, currentDir.FolderName, true, isNetworkPath), cancellationToken);
                         }
                     }
                     finally

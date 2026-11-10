@@ -89,6 +89,48 @@ namespace WinThumbsPreloader
                 Settings.Default.OptimizeIconCacheSizeKb = IconCacheSizeKb;
                 Settings.Default.Save();
             }
+
+            public int ToBitMask()
+            {
+                int mask = 0;
+                if (EnforceOnStartup) mask |= 1 << 0;
+                if (PreventThumbCacheCleanup) mask |= 1 << 1;
+                if (ClearDiskCleanupFlags) mask |= 1 << 2;
+                if (DisableSilentCleanupTask) mask |= 1 << 3;
+                if (DisableNetworkThumbsDb) mask |= 1 << 4;
+                if (ForceThumbnailPreviews) mask |= 1 << 5;
+                if (DisableFolderTypeDiscovery) mask |= 1 << 6;
+                if (ExpandBagMruSize) mask |= 1 << 7;
+                if (ExpandIconCache) mask |= 1 << 8;
+                return mask;
+            }
+
+            public static OptimizationProfile FromBitMask(int mask, int iconCacheSizeKb)
+            {
+                int clampedKb = iconCacheSizeKb <= 0
+                    ? 8192
+                    : Math.Clamp(iconCacheSizeKb, 1024, 65536);
+
+                return new OptimizationProfile
+                {
+                    EnforceOnStartup = (mask & (1 << 0)) != 0,
+                    PreventThumbCacheCleanup = (mask & (1 << 1)) != 0,
+                    ClearDiskCleanupFlags = (mask & (1 << 2)) != 0,
+                    DisableSilentCleanupTask = (mask & (1 << 3)) != 0,
+                    DisableNetworkThumbsDb = (mask & (1 << 4)) != 0,
+                    ForceThumbnailPreviews = (mask & (1 << 5)) != 0,
+                    DisableFolderTypeDiscovery = (mask & (1 << 6)) != 0,
+                    ExpandBagMruSize = (mask & (1 << 7)) != 0,
+                    ExpandIconCache = (mask & (1 << 8)) != 0,
+                    IconCacheSizeKb = clampedKb
+                };
+            }
+
+            public string BuildElevatedCliArguments()
+            {
+                int clampedKb = Math.Clamp(IconCacheSizeKb < 1024 ? 8192 : IconCacheSizeKb, 1024, 65536);
+                return $"-apply-optimizations -profile-mask:0x{ToBitMask():X4} -icon-cache-kb:{clampedKb}";
+            }
         }
 
         public sealed class WindowsOptimizationStatusReport
@@ -650,6 +692,9 @@ namespace WinThumbsPreloader
 
             int deletedCount = 0;
 
+            if (PathSecurity.HasReparsePointOrJunctionInPath(explorerDir))
+                return 0;
+
             if (Directory.Exists(explorerDir))
             {
                 try
@@ -671,9 +716,12 @@ namespace WinThumbsPreloader
                     ? parent.FullName
                     : localAppData;
 
-                string legacyIconCache = Path.Combine(candidateRoot, "IconCache.db");
-                if (File.Exists(legacyIconCache) && TryDeleteFileForce(legacyIconCache))
-                    deletedCount++;
+                if (!PathSecurity.HasReparsePointOrJunctionInPath(candidateRoot))
+                {
+                    string legacyIconCache = Path.Combine(candidateRoot, "IconCache.db");
+                    if (File.Exists(legacyIconCache) && TryDeleteFileForce(legacyIconCache))
+                        deletedCount++;
+                }
             }
             catch { }
 
@@ -706,9 +754,13 @@ namespace WinThumbsPreloader
                     catch { }
                 }
 
-                string explorerExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+                string windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                if (string.IsNullOrWhiteSpace(windowsDir))
+                    return false;
+
+                string explorerExe = Path.Combine(windowsDir, "explorer.exe");
                 if (!File.Exists(explorerExe))
-                    explorerExe = "explorer.exe";
+                    return false;
 
                 Process.Start(new ProcessStartInfo
                 {
@@ -729,12 +781,23 @@ namespace WinThumbsPreloader
         /// </summary>
         public static bool RunElevatedHelper(string cliFlag)
         {
+            if (string.IsNullOrWhiteSpace(cliFlag))
+                return false;
+
+            string trimmedArgs = cliFlag.Trim();
+            bool allowed = trimmedArgs.Equals("-restore-defaults", StringComparison.OrdinalIgnoreCase) ||
+                           trimmedArgs.Equals("-apply-optimizations", StringComparison.OrdinalIgnoreCase) ||
+                           trimmedArgs.StartsWith("-apply-optimizations ", StringComparison.OrdinalIgnoreCase);
+
+            if (!allowed || trimmedArgs.IndexOfAny(['"', '\'', '&', '|', ';', '\r', '\n']) >= 0)
+                return false;
+
             try
             {
                 using Process? proc = Process.Start(new ProcessStartInfo
                 {
                     FileName = Application.ExecutablePath,
-                    Arguments = cliFlag,
+                    Arguments = trimmedArgs,
                     Verb = "runas",
                     UseShellExecute = true,
                     WindowStyle = ProcessWindowStyle.Hidden
@@ -1154,6 +1217,9 @@ namespace WinThumbsPreloader
         {
             try
             {
+                if (PathSecurity.HasReparsePointOrJunctionInPath(filePath))
+                    return false;
+
                 File.SetAttributes(filePath, FileAttributes.Normal);
                 File.Delete(filePath);
                 return !File.Exists(filePath);

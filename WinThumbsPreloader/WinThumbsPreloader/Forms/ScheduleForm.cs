@@ -55,7 +55,7 @@ namespace WinThumbsPreloader
             else if (CloseButton.Text == "Exit")
             {
                 WriteLine("Exiting application from schedule form", LoggingFrequency.GUILogging);
-                Environment.Exit(0);
+                Program.ExitApplication(0);
             }
         }
         private void ScheduleForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -63,7 +63,7 @@ namespace WinThumbsPreloader
             if (e.CloseReason == CloseReason.UserClosing && (Control.ModifierKeys & Keys.Shift) == Keys.Shift)
             {
                 WriteLine("Exiting application from schedule form", LoggingFrequency.GUILogging);
-                Environment.Exit(0); // Exit the entire application
+                Program.ExitApplication(0); // Exit the entire application
             }
         }
 

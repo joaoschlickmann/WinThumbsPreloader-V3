@@ -95,7 +95,7 @@ namespace WinThumbsPreloader.Forms
             }
             else if (CloseButton.Text == "Exit")
             {
-                Environment.Exit(0);
+                Program.ExitApplication(0);
             }
         }
 

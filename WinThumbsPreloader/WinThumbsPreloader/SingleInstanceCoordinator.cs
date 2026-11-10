@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -21,10 +22,19 @@ namespace WinThumbsPreloader
     {
         public const string DefaultScopeId = "WinThumbsPreloader_SingleInstance_v3_CF49DD18-AA76-4E79-97C2-4FEAED1AED5F";
 
-        private const int ASFW_ANY = -1;
+        private const uint EVENT_MODIFY_STATE = 0x0002;
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool AllowSetForegroundWindow(int dwProcessId);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr OpenEventW(uint dwDesiredAccess, bool bInheritHandle, string lpName);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetEvent(IntPtr hEvent);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr hObject);
 
         private static readonly object LocalScopesLock = new();
         private static readonly HashSet<string> ActiveLocalScopes = new(StringComparer.OrdinalIgnoreCase);
@@ -87,13 +97,24 @@ namespace WinThumbsPreloader
                 return false;
 
             string trimmed = value.Trim();
-            if (trimmed.Length == 0 || trimmed.Length > 128)
+            if (trimmed.Length == 0 || trimmed.Length > 80)
                 return false;
+
+            if (!trimmed.StartsWith("WinThumbsPreloader_", StringComparison.Ordinal) &&
+                !trimmed.StartsWith("WTP_", StringComparison.Ordinal))
+            {
+                return false;
+            }
 
             for (int i = 0; i < trimmed.Length; i++)
             {
                 char c = trimmed[i];
-                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-' && c != '.')
+                bool isAsciiAlphaNum =
+                    (c >= 'a' && c <= 'z') ||
+                    (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9');
+
+                if (!isAsciiAlphaNum && c != '_' && c != '-')
                     return false;
             }
 
@@ -182,13 +203,9 @@ namespace WinThumbsPreloader
         {
             scopeId = GetEffectiveScopeId(scopeId);
 
-            try
+            if (kind != SingleInstanceActivationKind.Shutdown)
             {
-                AllowSetForegroundWindow(ASFW_ANY);
-            }
-            catch
-            {
-                // Best effort for Win32 foreground transfer
+                GrantForegroundPermissionToPeerInstances();
             }
 
             string eventName = kind switch
@@ -201,8 +218,24 @@ namespace WinThumbsPreloader
 
             try
             {
-                using EventWaitHandle evt = CreateOrOpenPermissiveEvent(eventName);
-                evt.Set();
+                IntPtr eventHandle = OpenEventW(EVENT_MODIFY_STATE, false, eventName);
+                if (eventHandle == IntPtr.Zero)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    if (!SetEvent(eventHandle))
+                    {
+                        return false;
+                    }
+                }
+                finally
+                {
+                    CloseHandle(eventHandle);
+                }
+
                 WriteLine($"Signaled existing instance with {kind}.", LoggingFrequency.GUILogging);
                 return true;
             }
@@ -210,6 +243,28 @@ namespace WinThumbsPreloader
             {
                 WriteLine($"Failed to signal existing instance ({kind}): " + ex.Message, LoggingFrequency.GUILogging);
                 return false;
+            }
+        }
+
+        private static void GrantForegroundPermissionToPeerInstances()
+        {
+            try
+            {
+                int currentPid = Environment.ProcessId;
+                foreach (Process peer in Process.GetProcessesByName("WinThumbsPreloader"))
+                {
+                    using (peer)
+                    {
+                        if (peer.Id != currentPid)
+                        {
+                            try { AllowSetForegroundWindow(peer.Id); } catch { }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Best effort for Win32 foreground transfer
             }
         }
 
@@ -290,7 +345,10 @@ namespace WinThumbsPreloader
                 using WindowsIdentity identity = WindowsIdentity.GetCurrent();
                 if (identity.User != null)
                 {
-                    security.AddAccessRule(new MutexAccessRule(identity.User, MutexRights.FullControl, AccessControlType.Allow));
+                    security.AddAccessRule(new MutexAccessRule(
+                        identity.User,
+                        MutexRights.Synchronize | MutexRights.Modify,
+                        AccessControlType.Allow));
                 }
 
                 return MutexAcl.Create(initiallyOwned: false, name, out createdNew, security);
@@ -314,7 +372,10 @@ namespace WinThumbsPreloader
                 using WindowsIdentity identity = WindowsIdentity.GetCurrent();
                 if (identity.User != null)
                 {
-                    security.AddAccessRule(new EventWaitHandleAccessRule(identity.User, EventWaitHandleRights.FullControl, AccessControlType.Allow));
+                    security.AddAccessRule(new EventWaitHandleAccessRule(
+                        identity.User,
+                        EventWaitHandleRights.Synchronize | EventWaitHandleRights.Modify,
+                        AccessControlType.Allow));
                 }
 
                 return EventWaitHandleAcl.Create(

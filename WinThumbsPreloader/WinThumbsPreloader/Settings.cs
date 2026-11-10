@@ -5,6 +5,7 @@ using System.Configuration;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace WinThumbsPreloader.Properties {
@@ -72,10 +73,16 @@ namespace WinThumbsPreloader.Properties {
             }
         }
 
+        internal const long MaxUserConfigBytes = 1_048_576; // 1 MB cap
+
         internal int MigrateFromPreviousUserConfigs(string appConfigRoot, Version currentAssemblyVersion)
         {
-            if (string.IsNullOrWhiteSpace(appConfigRoot) || !Directory.Exists(appConfigRoot))
+            if (string.IsNullOrWhiteSpace(appConfigRoot) ||
+                !Directory.Exists(appConfigRoot) ||
+                PathSecurity.HasReparsePointOrJunctionInPath(appConfigRoot))
+            {
                 return 0;
+            }
 
             var candidateConfigs = new List<(Version Version, DateTime LastWriteUtc, string FilePath)>();
 
@@ -83,8 +90,14 @@ namespace WinThumbsPreloader.Properties {
             {
                 foreach (string hashDir in Directory.EnumerateDirectories(appConfigRoot, "WinThumbsPreloader*"))
                 {
+                    if (PathSecurity.IsReparsePoint(hashDir))
+                        continue;
+
                     foreach (string versionDir in Directory.EnumerateDirectories(hashDir))
                     {
+                        if (PathSecurity.IsReparsePoint(versionDir))
+                            continue;
+
                         string folderName = Path.GetFileName(versionDir);
                         if (!Version.TryParse(folderName, out Version parsedVersion))
                             continue;
@@ -93,7 +106,7 @@ namespace WinThumbsPreloader.Properties {
                             continue;
 
                         string userConfigPath = Path.Combine(versionDir, "user.config");
-                        if (File.Exists(userConfigPath))
+                        if (PathSecurity.IsSafeRegularFileWithinLimit(userConfigPath, MaxUserConfigBytes, out _))
                         {
                             DateTime lastWriteUtc = File.GetLastWriteTimeUtc(userConfigPath);
                             candidateConfigs.Add((parsedVersion, lastWriteUtc, userConfigPath));
@@ -122,12 +135,25 @@ namespace WinThumbsPreloader.Properties {
 
         internal int ApplyUserConfigXmlFile(string userConfigPath)
         {
-            if (string.IsNullOrWhiteSpace(userConfigPath) || !File.Exists(userConfigPath))
+            if (!PathSecurity.IsSafeRegularFileWithinLimit(userConfigPath, MaxUserConfigBytes, out _))
                 return 0;
 
             try
             {
-                XDocument doc = XDocument.Load(userConfigPath);
+                var readerSettings = new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                    MaxCharactersInDocument = MaxUserConfigBytes,
+                    MaxCharactersFromEntities = 1024
+                };
+
+                XDocument doc;
+                using (var stream = new FileStream(userConfigPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var reader = XmlReader.Create(stream, readerSettings))
+                {
+                    doc = XDocument.Load(reader);
+                }
                 var settingElements = doc.Descendants("setting");
                 int applied = 0;
 

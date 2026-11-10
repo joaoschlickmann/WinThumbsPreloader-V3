@@ -461,7 +461,7 @@ namespace WinThumbsPreloader
 
             WindowsOptimizer.ApplyOptimizations(profile, broadcastShellChange: false);
 
-            bool elevatedSuccess = WindowsOptimizer.RunElevatedHelper("-apply-optimizations");
+            bool elevatedSuccess = WindowsOptimizer.RunElevatedHelper(profile.BuildElevatedCliArguments());
             RefreshLiveSystemStatus();
 
             if (elevatedSuccess)

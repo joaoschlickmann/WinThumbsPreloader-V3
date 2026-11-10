@@ -429,11 +429,26 @@ namespace WinThumbsPreloader
             string guidTitle = Guid.NewGuid().ToString();
             _nativeProgressDialog.SetTitle(guidTitle);
             _nativeProgressDialog.StartProgressDialog(handle, null, _flags, IntPtr.Zero);
-            // Workaround to manipulate progressbar style
+            // Workaround to manipulate progressbar style (strictly scoped to current process ID)
             IntPtr handler = IntPtr.Zero;
+            uint currentPid = (uint)Environment.ProcessId;
             for (int attempt = 0; attempt < 600; attempt++) // Timeout after 15 seconds
             {
-                handler = FindWindow(null, guidTitle);
+                IntPtr candidate = IntPtr.Zero;
+                while (true)
+                {
+                    candidate = FindWindowEx(IntPtr.Zero, candidate, null, guidTitle);
+                    if (candidate == IntPtr.Zero)
+                        break;
+
+                    GetWindowThreadProcessId(candidate, out uint windowPid);
+                    if (windowPid == currentPid)
+                    {
+                        handler = candidate;
+                        break;
+                    }
+                }
+
                 if (handler != IntPtr.Zero) break;
                 Thread.Sleep(25);
             }
@@ -570,6 +585,9 @@ namespace WinThumbsPreloader
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         static extern IntPtr SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
         #region COM Interop
 
@@ -710,7 +728,7 @@ namespace WinThumbsPreloader
             /// <param name="fCompactPath">TRUE to have path strings compacted if they are too large to fit on a line. The paths are compacted with PathCompactPath.</param>
             /// <param name="pvResevered"> Reserved. Set to IntPtr.Zero.</param>
             /// <remarks>This function is typically used to display a message such as "Item XXX is now being processed." typically, messages are displayed on lines 1 and 2, with line 3 reserved for the estimated time.</remarks>
-            void SetLine(uint dwLineNum, [MarshalAs(UnmanagedType.LPWStr)] string pwzString, [MarshalAs(UnmanagedType.VariantBool)] bool fCompactPath, IntPtr pvResevered);
+            void SetLine(uint dwLineNum, [MarshalAs(UnmanagedType.LPWStr)] string pwzString, [MarshalAs(UnmanagedType.Bool)] bool fCompactPath, IntPtr pvResevered);
 
             /// <summary>
             /// Sets a message to be displayed if the user cancels the operation.

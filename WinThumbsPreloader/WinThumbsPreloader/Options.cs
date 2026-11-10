@@ -15,6 +15,9 @@ namespace WinThumbsPreloader
         public bool reopenSettings;
         public bool reopenOptimizer;
         public bool applyOptimizations;
+        public bool hasExplicitOptimizationProfile;
+        public int optimizationProfileMask;
+        public int optimizationIconCacheKb = 8192;
         public bool restoreDefaults;
         public bool shutdownExisting;
         public bool unknownFlagProvided;
@@ -82,6 +85,49 @@ namespace WinThumbsPreloader
                 else if (arg.Equals("-apply-optimizations", StringComparison.OrdinalIgnoreCase))
                 {
                     applyOptimizations = true;
+
+                    for (int j = i + 1; j < arguments.Length; j++)
+                    {
+                        string subArg = arguments[j]?.Trim() ?? string.Empty;
+                        if (subArg.StartsWith("-profile-mask:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ReadOnlySpan<char> maskSpan = subArg.AsSpan("-profile-mask:".Length).Trim();
+                            bool parsedMask = maskSpan.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                                ? int.TryParse(maskSpan.Slice(2), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out optimizationProfileMask)
+                                : int.TryParse(maskSpan, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out optimizationProfileMask);
+
+                            if (!parsedMask || optimizationProfileMask < 0 || optimizationProfileMask > 0xFFFF)
+                            {
+                                applyOptimizations = false;
+                                unknownFlagProvided = true;
+                                badOrNoArguments = true;
+                                return;
+                            }
+
+                            hasExplicitOptimizationProfile = true;
+                        }
+                        else if (subArg.StartsWith("-icon-cache-kb:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ReadOnlySpan<char> kbSpan = subArg.AsSpan("-icon-cache-kb:".Length).Trim();
+                            if (!int.TryParse(kbSpan, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int parsedKb) || parsedKb <= 0)
+                            {
+                                applyOptimizations = false;
+                                unknownFlagProvided = true;
+                                badOrNoArguments = true;
+                                return;
+                            }
+
+                            optimizationIconCacheKb = Math.Clamp(parsedKb, 1024, 65536);
+                        }
+                        else
+                        {
+                            applyOptimizations = false;
+                            unknownFlagProvided = true;
+                            badOrNoArguments = true;
+                            return;
+                        }
+                    }
+
                     break;
                 }
                 else if (arg.Equals("-restore-defaults", StringComparison.OrdinalIgnoreCase))

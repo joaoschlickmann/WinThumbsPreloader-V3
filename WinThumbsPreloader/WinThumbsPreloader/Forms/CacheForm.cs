@@ -1669,11 +1669,14 @@ namespace WinThumbsPreloader
                             return CacheOperationResult.Fail(CacheOperationFailureReason.PermissionDenied, writableMessage);
                         }
 
-                        string tempPath = Path.Combine(currentBackupPath, "_staging_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+                        string runSuffix = Guid.NewGuid().ToString("N")[..8];
+                        string tempPath = Path.Combine(currentBackupPath, $"_staging_{DateTime.Now:yyyyMMdd_HHmmss}_{runSuffix}");
 
-                        string restorePath = Path.Combine(currentBackupPath, "_restore_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+                        string restorePath = Path.Combine(currentBackupPath, $"_restore_{DateTime.Now:yyyyMMdd_HHmmss}_{runSuffix}");
 
-                        Directory.CreateDirectory(tempPath);
+                        var tempDirInfo = Directory.CreateDirectory(tempPath);
+                        if ((tempDirInfo.Attributes & FileAttributes.ReparsePoint) != 0 || PathSecurity.HasReparsePointOrJunctionInPath(tempPath))
+                            throw new IOException("Backup staging directory cannot be or traverse a reparse point.");
 
                         string[] sourceFiles = Directory.GetFiles(explorerPath, "thumbcache_*.db");
 
@@ -1778,7 +1781,11 @@ namespace WinThumbsPreloader
                         SanitizeThumbCacheDirectory(tempPath);
 
                         if (existingFiles.Length > 0)
-                            Directory.CreateDirectory(restorePath);
+                        {
+                            var restoreDirInfo = Directory.CreateDirectory(restorePath);
+                            if ((restoreDirInfo.Attributes & FileAttributes.ReparsePoint) != 0 || PathSecurity.HasReparsePointOrJunctionInPath(restorePath))
+                                throw new IOException("Backup restore directory cannot be or traverse a reparse point.");
+                        }
 
                         foreach (string oldFile in existingFiles)
                         {
@@ -1933,7 +1940,7 @@ namespace WinThumbsPreloader
         {
             try
             {
-                if (Directory.Exists(path))
+                if (Directory.Exists(path) && !PathSecurity.HasReparsePointOrJunctionInPath(path))
                     Directory.Delete(path, true);
             }
             catch { }
@@ -2510,6 +2517,9 @@ namespace WinThumbsPreloader
 
         public static void CopyFileSharedRead(string sourcePath, string destinationPath)
         {
+            PathSecurity.EnsureSafeFileForRead(sourcePath);
+            PathSecurity.EnsureSafeFileForWrite(destinationPath);
+
             DateTime lastWriteUtc = File.GetLastWriteTimeUtc(sourcePath);
 
             using (var srcStream = new FileStream(
@@ -2539,6 +2549,9 @@ namespace WinThumbsPreloader
 
         public static void CopyFileToDestinationSharedReadWrite(string sourcePath, string destinationPath)
         {
+            PathSecurity.EnsureSafeFileForRead(sourcePath);
+            PathSecurity.EnsureSafeFileForWrite(destinationPath);
+
             DateTime lastWriteUtc = File.GetLastWriteTimeUtc(sourcePath);
 
             using (var srcStream = new FileStream(
@@ -2606,6 +2619,8 @@ namespace WinThumbsPreloader
             return crc;
         }
 
+        internal const long MaxThumbCacheIdxBytes = 256L * 1024 * 1024;
+
         /// <summary>
         /// Validates and repairs Windows 10/11 <c>thumbcache_*.db</c> headers and <c>thumbcache_idx.db</c> stream pointers
         /// so that live-copy torn writes (stale <c>FirstFreeEntryOffset</c> or out-of-sync index pointers/counts) cannot
@@ -2613,8 +2628,12 @@ namespace WinThumbsPreloader
         /// </summary>
         public static bool SanitizeThumbCacheDirectory(string directoryPath)
         {
-            if (string.IsNullOrWhiteSpace(directoryPath) || !Directory.Exists(directoryPath))
+            if (string.IsNullOrWhiteSpace(directoryPath) ||
+                !Directory.Exists(directoryPath) ||
+                PathSecurity.HasReparsePointOrJunctionInPath(directoryPath))
+            {
                 return false;
+            }
 
             bool modified = false;
 
@@ -2630,7 +2649,7 @@ namespace WinThumbsPreloader
                 {
                     activeBlocksByStream[s] = new Dictionary<uint, ulong>();
                     string streamPath = Path.Combine(directoryPath, $"thumbcache_{ThumbCacheStreamNames[s]}.db");
-                    if (!File.Exists(streamPath))
+                    if (!File.Exists(streamPath) || PathSecurity.IsReparsePoint(streamPath))
                         continue;
 
                     DateTime lastWriteUtc = File.GetLastWriteTimeUtc(streamPath);
@@ -2742,14 +2761,30 @@ namespace WinThumbsPreloader
                 }
 
                 string idxPath = Path.Combine(directoryPath, "thumbcache_idx.db");
-                if (!File.Exists(idxPath))
+                if (!File.Exists(idxPath) || PathSecurity.IsReparsePoint(idxPath))
                     return modified;
 
                 DateTime idxLastWriteUtc = File.GetLastWriteTimeUtc(idxPath);
                 byte[] idxBytes;
                 using (var idxFs = new FileStream(idxPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 {
-                    idxBytes = new byte[idxFs.Length];
+                    long rawIdxLength = idxFs.Length;
+                    if (rawIdxLength < 144 || rawIdxLength > MaxThumbCacheIdxBytes)
+                        return modified;
+
+                    Span<byte> idxHdr = stackalloc byte[32];
+                    if (idxFs.Read(idxHdr) < 32 ||
+                        idxHdr[4] != (byte)'I' || idxHdr[5] != (byte)'M' || idxHdr[6] != (byte)'M' || idxHdr[7] != (byte)'M')
+                    {
+                        return modified;
+                    }
+
+                    uint previewSlots = BitConverter.ToUInt32(idxHdr.Slice(24, 4));
+                    if (144L + (long)previewSlots * 72L > rawIdxLength)
+                        return modified;
+
+                    idxFs.Position = 0;
+                    idxBytes = new byte[(int)rawIdxLength];
                     int totalRead = 0;
                     while (totalRead < idxBytes.Length)
                     {
@@ -2907,7 +2942,7 @@ namespace WinThumbsPreloader
             {
                 try
                 {
-                    if (!Directory.Exists(explorerPath))
+                    if (!Directory.Exists(explorerPath) || PathSecurity.HasReparsePointOrJunctionInPath(explorerPath))
                         return Success.Failure;
 
                     string[] files = Directory.GetFiles(explorerPath, "thumbcache_*.db");
@@ -2922,6 +2957,12 @@ namespace WinThumbsPreloader
                     {
                         try
                         {
+                            if (PathSecurity.IsReparsePoint(file))
+                            {
+                                failed++;
+                                continue;
+                            }
+
                             if (forceRestore && Properties.Settings.Default.ExplorerCloseFrequency == "On Every File")
                             {
                                 await CloseExplorerAsync();
