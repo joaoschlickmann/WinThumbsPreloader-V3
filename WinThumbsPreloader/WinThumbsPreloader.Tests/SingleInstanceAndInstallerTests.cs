@@ -338,7 +338,10 @@ namespace WinThumbsPreloader.Tests
                         try
                         {
                             if (!p.HasExited)
-                                p.Kill();
+                            {
+                                p.Kill(entireProcessTree: true);
+                                p.WaitForExit(3000);
+                            }
                         }
                         catch { }
                         try { p.Dispose(); } catch { }
