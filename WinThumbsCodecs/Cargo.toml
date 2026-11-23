@@ -1,0 +1,50 @@
+[package]
+name = "win_thumbs_codecs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Native Windows 10/11 IThumbnailProvider COM shell extension for Adobe, Corel, Affinity, SVG, and Camera RAW formats"
+
+[lib]
+name = "WinThumbsCodecs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+craft-psd = { git = "https://github.com/storytold/craft-libs", rev = "8f6ad14b58ca2efee67aac5d0f5573bad6a5ca81", default-features = false }
+craft-cms = { git = "https://github.com/storytold/craft-libs", rev = "8f6ad14b58ca2efee67aac5d0f5573bad6a5ca81", default-features = false }
+craft-eps = { git = "https://github.com/storytold/craft-libs", rev = "8f6ad14b58ca2efee67aac5d0f5573bad6a5ca81", default-features = false }
+craft-ps = { git = "https://github.com/storytold/craft-libs", rev = "8f6ad14b58ca2efee67aac5d0f5573bad6a5ca81", default-features = false, features = ["read"] }
+craft-cdr = { git = "https://github.com/storytold/craft-libs", rev = "8f6ad14b58ca2efee67aac5d0f5573bad6a5ca81", default-features = false }
+craft-affinity = { git = "https://github.com/storytold/craft-libs", rev = "8f6ad14b58ca2efee67aac5d0f5573bad6a5ca81", default-features = false }
+craft-raw = { git = "https://github.com/storytold/craft-libs", rev = "8f6ad14b58ca2efee67aac5d0f5573bad6a5ca81", default-features = false, features = ["cr2", "cr3", "raf", "orf", "hasselblad", "jxl"] }
+
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_System_Com",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices",
+] }
+windows-core = "0.62.2"
+resvg = "0.50.0"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tiff"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+base64 = "0.22"
+
+[dev-dependencies]
+windows = { version = "0.62.2", features = [
+    "Win32_System_Com_StructuredStorage",
+] }
+
+[profile.dev.package.craft-affinity]
+opt-level = 1
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "unwind"

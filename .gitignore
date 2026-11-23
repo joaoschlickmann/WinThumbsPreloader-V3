@@ -421,3 +421,9 @@ FodyWeavers.xsd
 *.key
 *.p12
 *.snk
+
+# WinThumbsCodecs native build artifacts
+/WinThumbsCodecs/target/
+/WinThumbsCodecs/prebuilt/
+/artifacts/cache/
+*.old
