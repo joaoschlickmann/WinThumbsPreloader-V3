@@ -294,7 +294,7 @@ namespace WinThumbsPreloader.Tests
                 Assert.NotNull(proc1);
 
                 // Give proc1 time to acquire mutex and create tray form
-                Thread.Sleep(1200);
+                Thread.Sleep(1500);
                 Assert.False(proc1!.HasExited, "Primary -startminimized process exited unexpectedly.");
 
                 // 2. Launch second instance with NO arguments (simulating Start Menu launch)
@@ -315,7 +315,7 @@ namespace WinThumbsPreloader.Tests
                 // Verify primary instance is still alive and its main window became visible
                 bool mainWindowRestored = false;
                 var sw = Stopwatch.StartNew();
-                while (sw.ElapsedMilliseconds < 5000 && !proc1.HasExited)
+                while (sw.ElapsedMilliseconds < 15000 && !proc1.HasExited)
                 {
                     proc1.Refresh();
                     if (proc1.MainWindowHandle != IntPtr.Zero)

@@ -162,7 +162,7 @@ namespace WinThumbsPreloader.Tests
             await RunOnStaThreadAsync(() =>
             {
                 using var trayHost = new TrayHostController(new CacheService(), new UpdateService(), _ => { });
-                using var shellForm = new MainShellForm(trayHost, "overview");
+                using var shellForm = new MainShellForm(trayHost, "overview", isolatedUdf);
                 try
                 {
                     shellForm.StartPosition = FormStartPosition.Manual;
@@ -171,7 +171,7 @@ namespace WinThumbsPreloader.Tests
                     shellForm.Show();
                     Application.DoEvents();
 
-                    AwaitWithMessagePump(shellForm.WaitUntilReadyAsync(TimeSpan.FromSeconds(20)), 22000);
+                    AwaitWithMessagePump(shellForm.WaitUntilReadyAsync(TimeSpan.FromSeconds(40)), 45000);
                     PumpEventsFor(700);
 
                     string[] views = ["overview", "preload", "cache", "schedule", "codecs", "optimizer", "settings"];

@@ -31,6 +31,9 @@ namespace WinThumbsPreloader
 
         private static SingleInstanceCoordinator _singleInstanceCoordinator;
         private static ApplicationContext _shellContext;
+        private static readonly object _pendingActivationLock = new object();
+        private static SingleInstanceActivationKind? _pendingExternalActivation;
+        private static bool _uiStartupReady;
 
         private const int SW_RESTORE = 9;
         private const int SW_SHOW = 5;
@@ -176,7 +179,34 @@ namespace WinThumbsPreloader
                 return;
             }
 
+            lock (_pendingActivationLock)
+            {
+                if (!_uiStartupReady && GetUiInvokeTargetForm() == null && TrayHost == null)
+                {
+                    _pendingExternalActivation = kind;
+                    WriteLine($"Deferring external activation signal ({kind}) until UI host startup completes.", LoggingFrequency.GUILogging);
+                    return;
+                }
+            }
+
             InvokeOnUiThread(() => RestoreAndActivateExistingInstance(kind));
+        }
+
+        private static void FlushDeferredExternalActivation()
+        {
+            SingleInstanceActivationKind? pending;
+            lock (_pendingActivationLock)
+            {
+                _uiStartupReady = true;
+                pending = _pendingExternalActivation;
+                _pendingExternalActivation = null;
+            }
+
+            if (pending.HasValue)
+            {
+                WriteLine($"Flushing deferred external activation signal ({pending.Value}).", LoggingFrequency.GUILogging);
+                RestoreAndActivateExistingInstance(pending.Value);
+            }
         }
 
         private static void InvokeOnUiThread(Action action)
@@ -529,6 +559,7 @@ namespace WinThumbsPreloader
                 _ = TrayHost.InitializeMinimizedSessionAsync();
 
                 _shellContext = new ApplicationContext();
+                FlushDeferredExternalActivation();
                 Application.Run(_shellContext);
                 return;
             }
@@ -540,6 +571,7 @@ namespace WinThumbsPreloader
             TrayCacheForm.RefreshSettingsState();
             TrayCacheForm.MinimizeToTray();
             _shellContext = new ApplicationContext();
+            FlushDeferredExternalActivation();
             Application.Run(_shellContext);
         }
 
@@ -561,11 +593,14 @@ namespace WinThumbsPreloader
 
                 _shellContext = new ApplicationContext();
                 MainShell.Show();
+                FlushDeferredExternalActivation();
                 Application.Run(_shellContext);
                 return;
             }
 
             MainAboutForm = new AboutForm();
+            _ = MainAboutForm.Handle;
+            FlushDeferredExternalActivation();
             Application.Run(MainAboutForm);
         }
 

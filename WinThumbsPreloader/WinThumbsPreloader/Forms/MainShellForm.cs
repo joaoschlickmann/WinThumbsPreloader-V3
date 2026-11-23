@@ -33,6 +33,7 @@ namespace WinThumbsPreloader.Forms
         private readonly OptimizerService _optimizerService;
         private readonly CodecsService _codecsService;
         private readonly WebBridge _bridge;
+        private readonly string? _explicitUserDataFolderOverride;
 
         private readonly TaskCompletionSource<bool> _readyTcs =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -47,9 +48,18 @@ namespace WinThumbsPreloader.Forms
         public event EventHandler? WebViewFallbackRequested;
 
         public MainShellForm(TrayHostController trayHost, string? initialView = null)
+            : this(trayHost, initialView, explicitUserDataFolderOverride: null)
+        {
+        }
+
+        internal MainShellForm(
+            TrayHostController trayHost,
+            string? initialView,
+            string? explicitUserDataFolderOverride)
         {
             _trayHost = trayHost ?? throw new ArgumentNullException(nameof(trayHost));
             _initialView = NormalizeViewName(initialView);
+            _explicitUserDataFolderOverride = explicitUserDataFolderOverride;
 
             _preloadService = new PreloadService();
             _scheduleService = new ScheduleService();
@@ -250,7 +260,9 @@ namespace WinThumbsPreloader.Forms
                     return;
                 }
 
-                string udfPath = GetWebView2UserDataFolder();
+                string udfPath = !string.IsNullOrWhiteSpace(_explicitUserDataFolderOverride)
+                    ? GetWebView2UserDataFolder(isAdmin: false, rawEnvOverride: _explicitUserDataFolderOverride)
+                    : GetWebView2UserDataFolder();
                 CoreWebView2Environment env = await CoreWebView2Environment.CreateAsync(null, udfPath);
 
                 if (IsDisposed || Disposing)
