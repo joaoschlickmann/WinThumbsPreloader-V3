@@ -4,6 +4,32 @@ All notable changes to **WinThumbsPreloader** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-11-22
+
+### Added
+- **Built-in Open-Source Native Thumbnail Codecs (`WinThumbsCodecs.dll` + `pdfium.dll`)**:
+  - Added a standalone native Rust x64 Windows `IThumbnailProvider` (`IInitializeWithStream`) COM extension built from `storytold/craft-libs` (`craft-psd`, `craft-cms`, `craft-eps`, `craft-ps`, `craft-cdr`, `craft-affinity`, `craft-raw`), `resvg`, and dynamically loaded non-V8/non-XFA `pdfium.dll` (`chromium/8165`, SHA-256 verified), running strictly out-of-process in `dllhost.exe` (never setting `DisableProcessIsolation`).
+  - Added 10 independently toggleable format families (`mask 0x000..0x3FF`):
+    - **Adobe Photoshop** (`.psd`, `.psb` with CMYK ICC inversion & resource 1033 BGR swap)
+    - **PDF Documents** (`.pdf`)
+    - **Adobe Illustrator** (`.ai`, PDF-compatible & legacy PS)
+    - **Encapsulated PostScript** (`.eps`)
+    - **Adobe InDesign** (`.indd`, `.idml`)
+    - **Adobe XD** (`.xd`, ZIP preview extraction with 16 MiB zip-bomb guard)
+    - **SVG / SVGZ Vector Graphics** (`.svg`, `.svgz` with external URL/XXE loading disabled and decompression caps)
+    - **CorelDRAW** (`.cdr`)
+    - **Affinity Suite** (`.afphoto`, `.afdesign`, `.afpub`, `.af`)
+    - **Camera RAW** (`.dng`, `.cr2`, `.cr3`, `.crw`, `.nef`, `.nrw`, `.arw`, `.raf`, `.orf`, `.rw2`, `.pef`, `.srw`, `.3fr`, `.fff`, `.mrw`, `.x3f`, `.erf`, `.mef`, `.rwl`, `.iiq` with EXIF orientation & JXL preview support)
+- **Built-in Codecs Management UI (`CodecsForm`) & Entry Points**:
+  - Added the **Codecs** button on the main window (`AboutForm`) and `SettingsForm`, plus **Thumbnail Codecs...** in the system tray context menu.
+  - Added live conflict detection against existing handlers (`Ardfry PSD Codec`, `Adobe Acrobat`, `Microsoft PowerToys`, etc.), idempotent JSON backup/restore of prior handlers (`codecs-backup.json`), safe `UserChoice\ProgId` `ShellEx` overrides (never touching `UserChoice`), optional Settings extension list synchronization, and UAC-elevated HKLM+HKCU install/uninstall (`-reopencodecs`, `-apply-codecs -codecs-mask:0x...`, `-uninstall-codecs`).
+- **Build Pipeline, Packaging & Automated Tests**:
+  - Added `scripts/build-codecs.ps1` with fail-closed PDFium SHA-256 verification and `--locked` Cargo builds.
+  - Updated `InnoSetup/installer.iss` to bundle `{app}\Codecs\{WinThumbsCodecs.dll, pdfium.dll, PDFIUM-LICENSE.txt}` with `restartreplace uninsrestartdelete`, `[UninstallRun]` `-uninstall-codecs` cleanup, and alternate directory cleanup.
+  - Updated `.github/workflows/build-and-release.yml` to build/test `WinThumbsCodecs` cleanly in CI, and added Rust integration/COM tests plus C# `CodecManagerTests`, `VisualAndUserSimulationE2ETests`, and `SecurityHardeningTests` coverage.
+
+---
+
 ## [3.2.2] - 2026-11-10
 
 ### Fixed

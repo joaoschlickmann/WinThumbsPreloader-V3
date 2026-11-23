@@ -21,6 +21,8 @@
   - [3. Automatic Bucket Spillover & 2 GB Offset-Limit Guard](#3-automatic-bucket-spillover--2-gb-offset-limit-guard)
   - [4. Network Drive (SMB/UNC) & Heavy-Media Isolation](#4-network-drive-smbunc--heavy-media-isolation)
   - [5. Bulk Preloader & Task Scheduler Automation](#5-bulk-preloader--task-scheduler-automation)
+  - [6. Built-In Windows Optimizer Module (`WindowsOptimizerForm`)](#6-built-in-windows-optimizer-module-windowsoptimizerform)
+  - [7. Built-In Open-Source Thumbnail Codecs (`CodecsForm`)](#7-built-in-open-source-thumbnail-codecs-codecsform)
 - [Installation](#installation)
 - [Usage Guide](#usage-guide)
   - [Windows Explorer Context Menu](#windows-explorer-context-menu)
@@ -55,7 +57,7 @@ Building upon the foundation of **v1** (core preloading and Explorer context men
 - **Shared-ReadWrite Live Backup & Restore**: Uses `FileShare.ReadWrite | FileShare.Delete` streams and orders `thumbcache_*.db` writes prior to `thumbcache_idx.db`, enabling reliable backups and restores even when `explorer.exe`, `dllhost.exe`, or third-party File Open/Save dialogs hold open handles to cache files.
 - **Smart Bucket Spillover & `WTS_SLOWRECLAIM` Retention**: Requests `WTS_SLOWRECLAIM` to populate `thumbcache_sr.db` alongside standard streams and automatically spills over to the next unsaturated Windows cache bucket (`256 → 768 → 1280 → 1920 → 2560`) when a single `.db` file reaches the 1.6 GB soft ceiling.
 - **Elevated Mapped-Drive & UNC Resolver**: Resolves mapped network drive letters (`Z:\`, etc.) across UAC elevation boundaries via `WNetGetUniversalNameW` and `HKCU\Network` so scheduled or elevated tasks work seamlessly on NAS/SMB shares.
-- **Automated Test Suite**: Includes a 125-test xUnit suite (`WinThumbsPreloader.Tests`) covering STA COM concurrency, binary `CMMM`/`IMMM` sanitization, cross-process backup locks, bucket spillover, security hardening, and visual E2E GUI flows.
+- **Automated Test Suite**: Includes a 133-test xUnit suite (`WinThumbsPreloader.Tests`) plus 7 Rust native COM/decoder tests (`WinThumbsCodecs`) covering STA COM concurrency, binary `CMMM`/`IMMM` sanitization, cross-process backup locks, bucket spillover, all 10 built-in codec decoders, security hardening, and visual E2E GUI flows.
 
 ---
 
@@ -91,12 +93,26 @@ Building upon the foundation of **v1** (core preloading and Explorer context men
 - **Explorer ShellBag & Icon Cache Tuning**: Disables Automatic Folder Type Discovery (`FolderType = NotSpecified`) for instant opening of massive media folders, expands folder view memory to `20,000` folders (`BagMRU Size = 20000`), and expands the Windows Icon Cache (`Max Cached Icons` up to `16384 KB`).
 - **Portable Context Menu & Safe Maintenance**: Register or remove the Explorer right-click cascading context menu directly from the UI (even in Portable mode without Admin via `HKCU\Software\Classes`), rebuild the Windows Icon Cache without touching `thumbcache_*.db`, and revert all tweaks to Windows defaults at any time.
 
+### 7. Built-In Open-Source Thumbnail Codecs (`CodecsForm`)
+- **Embedded Native COM `IThumbnailProvider` (`WinThumbsCodecs.dll` + `pdfium.dll`)**: Pure out-of-process Windows 10/11 x64 thumbnail providers running inside `dllhost.exe` (without `DisableProcessIsolation`), requiring no external codecs for 10 format families:
+  - **Adobe Photoshop**: `.psd`, `.psb` (CMYK ICC inversion + resource `1033` BGR swap)
+  - **PDF Documents**: `.pdf` (non-V8/non-XFA `pdfium.dll`)
+  - **Adobe Illustrator**: `.ai` (PDF-compatible & legacy PostScript AI)
+  - **Encapsulated PostScript**: `.eps` (DOS TIFF/WMF, EPSI preview, PS-to-PDF fallback)
+  - **Adobe InDesign**: `.indd`, `.idml` (streaming XMP preview & ZIP package thumbnail)
+  - **Adobe XD**: `.xd` (ZIP preview with 16 MiB size cap)
+  - **SVG / SVGZ Vector Graphics**: `.svg`, `.svgz` (`resvg` with external URL/XXE loading blocked)
+  - **CorelDRAW**: `.cdr`
+  - **Affinity Suite**: `.afphoto`, `.afdesign`, `.afpub`, `.af`
+  - **Camera RAW**: `.dng`, `.cr2`, `.cr3`, `.crw`, `.nef`, `.nrw`, `.arw`, `.raf`, `.orf`, `.rw2`, `.pef`, `.srw`, `.3fr`, `.fff`, `.mrw`, `.x3f`, `.erf`, `.mef`, `.rwl`, `.iiq`
+- **Conflict Detection, Backup & Restore**: Open via the **Codecs** button in the main window (`AboutForm`), **Settings**, or tray menu (**Thumbnail Codecs...**). Existing handlers (such as **Ardfry PSD Codec**, **Adobe Acrobat**, or **Microsoft PowerToys**) are detected live, backed up to JSON before overriding `UserChoice\ProgId` `ShellEx` entries (never modifying `UserChoice`), and restored automatically when unchecked or uninstalled. Supports Standard User (`HKCU`), UAC-elevated system-wide registration (`HKLM` + `HKCU`), optional Preload Extensions sync, and CLI automation (`-reopencodecs`, `-apply-codecs -codecs-mask:0x...`, `-uninstall-codecs`).
+
 ---
 
 ## Installation
 
 ### Option 1: Installer (Recommended)
-1. Run `WinThumbsPreloader-3.2.2-setup.exe` (located in `InnoSetup/Output/` when compiled locally, or from the [Releases page](https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases)).
+1. Run `WinThumbsPreloader-3.3.0-setup.exe` (located in `InnoSetup/Output/` when compiled locally, or from the [Releases page](https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases)).
 2. The installer registers the Windows Explorer right-click context menus for **Folders**, **Folder Backgrounds**, and **Drives**, configures `SilentCleanup` cache protection, and adds `WinThumbsPreloader` to your system `PATH`.
 
 ### Option 2: Standalone Executable
@@ -134,6 +150,9 @@ WinThumbsPreloader [options] <path1> [path2 ...]
 | `-m:<n>` or `-m<n>` | **Multi-threaded (Custom)**: Enable multi-threaded extraction with `<n>` worker threads (`1`–`256`, e.g., `-m:16` or `-m16`). |
 | `-maxinstances:<n>` or `-p:<n>` | Limit the maximum number of paths processed concurrently when multiple paths are passed (`1`–`32`). |
 | `-startminimized` | Launch the Cache Manager minimized to the Windows system tray. |
+| `-reopencodecs` | Focus the running GUI instance and open the **Built-in Codecs** manager. |
+| `-apply-codecs -codecs-mask:0x...` | Register/update the selected built-in thumbnail codec families (`0x000`–`0x3FF`). |
+| `-uninstall-codecs` | Uninstall all built-in codecs and restore backed-up external handlers. |
 
 **Examples:**
 ```powershell
@@ -148,11 +167,11 @@ WinThumbsPreloader -s -r -m:8 -maxinstances:2 "D:\Photos" "E:\Renders" "\\NAS\Me
 
 ## Recommended Windows Shell Extensions
 
-WinThumbsPreloader uses the native Windows Shell thumbnail providers installed on your system. To preload formats that Windows does not natively decode out of the box, install the corresponding shell extensions:
+WinThumbsPreloader includes built-in open-source thumbnail codecs (via the **Codecs** button) for **PSD/PSB, PDF, AI, EPS, INDD/IDML, XD, SVG/SVGZ, CDR, Affinity, and Camera RAW**, so external third-party packs are optional. For HEIF/HEIC containers (or if you prefer keeping third-party handlers):
 
-- **SVG Previewer**: [SVG Explorer Extension](https://github.com/tibold/svg-explorer-extension/releases) (or Microsoft PowerToys File Explorer Add-ons)
+- **Optional Third-Party Alternatives**: Built-in codecs automatically back up and restore handlers such as [Microsoft PowerToys](https://learn.microsoft.com/en-us/windows/powertoys/file-explorer), Adobe Acrobat, or Ardfry PSD Codec when toggling codecs.
 - **HEIF / HEIC Images**: [HEIF Image Extensions (Microsoft Store)](https://www.microsoft.com/en-us/p/heif-image-extensions/9pmmsr1cgpwg)
-- **RAW Camera Formats**: [Raw Image Extension (Microsoft Store)](https://apps.microsoft.com/detail/9nctdw2w1bh8)
+- **Camera RAW & Archives**: Covered by built-in **Camera RAW** codec (or optional [Raw Image Extension (Microsoft Store)](https://apps.microsoft.com/detail/9nctdw2w1bh8) if preferred)
 
 ---
 
@@ -160,19 +179,26 @@ WinThumbsPreloader uses the native Windows Shell thumbnail providers installed o
 
 ### Prerequisites
 - **.NET 10.0 SDK** (`net10.0-windows7.0`)
+- **Rust (`>= 1.95`, `x86_64-pc-windows-msvc`)** with MSVC C++ Build Tools (to compile `WinThumbsCodecs.dll`)
 - **Windows 10 / 11 (x64)**
 - **Inno Setup 6** (optional, required only to compile the `.exe` setup installer)
 
 ### Build & Test Commands
 
 ```powershell
-# Restore, build, and run all 125 unit, integration, security, and visual E2E tests
-dotnet test "WinThumbsPreloader\WinThumbsPreloader.sln"
+# Step 1: Build & verify native COM thumbnail codecs (x64)
+# Fetch/verify PDFium, run Rust codec tests, and build Release WinThumbsCodecs payload into bin/Release/.../Codecs/
+.\scripts\build-codecs.ps1 -Configuration Release -RunTests -CopyToOutput
 
-# Build Release binaries (win-x64)
-dotnet build "WinThumbsPreloader\WinThumbsPreloader.sln" -c Release
+# Restore (locked), build, and run all automated C# unit, integration, security, and visual E2E tests
+dotnet test "WinThumbsPreloader\WinThumbsPreloader.sln" --locked-mode
 
-# Compile the Inno Setup installer (outputs to InnoSetup\Output\WinThumbsPreloader-3.2.2-setup.exe)
+# Step 2: Build Release win-x64 binaries & re-stage Codecs payload
+# Stage Codecs payload cleanly alongside Release binaries (requires Rust >= 1.95 on first run)
+dotnet build "WinThumbsPreloader\WinThumbsPreloader.csproj" -c Release -r win-x64 --no-self-contained
+.\scripts\build-codecs.ps1 -Configuration Release -SkipPdfiumDownload -CopyToOutput
+
+# Compile the Inno Setup installer (outputs to InnoSetup\Output\WinThumbsPreloader-3.3.0-setup.exe)
 ISCC.exe "InnoSetup\installer.iss"
 ```
 
@@ -184,7 +210,11 @@ This project stands on the shoulders of its predecessors:
 
 1. **[Dmitry Bruhov](https://github.com/Bruhov)** — Creator of the original **[WinThumbsPreloader (v1)](https://github.com/Bruhov/WinThumbsPreloader)** (2018–2020), who designed the original concept, Windows Shell thumbnail extraction integration, CLI interface, and Windows Explorer context menu setup.
 2. **[Mutahar Farooq](https://github.com/Mfarooq360)** — Creator and maintainer of **[WinThumbsPreloader V2](https://github.com/Mfarooq360/WinThumbsPreloader-V2)** (2025–2026), who expanded the utility into a full-featured suite with the GUI dashboard, Thumbnail Cache Manager (Backup, Restore, Reset Alerts), Task Scheduler integration, Settings management, logging system, and multi-threaded scanning.
-3. **[João Schlickmann](https://github.com/joaoschlickmann)** — Creator of **[WinThumbsPreloader V3](https://github.com/joaoschlickmann/WinThumbsPreloader-V3)**, adding the streaming producer–consumer pipeline, STA PIDL caching, two-lane heavy-media isolation, binary `CMMM`/`IMMM` cache sanitization and CRC64 repair, shared-handle backup/restore, bucket spillover, UNC/elevated mapped-drive resolution, and automated test suite.
+3. **[João Schlickmann](https://github.com/joaoschlickmann)** — Creator of **[WinThumbsPreloader V3](https://github.com/joaoschlickmann/WinThumbsPreloader-V3)**, adding the streaming producer–consumer pipeline, STA PIDL caching, two-lane heavy-media isolation, binary `CMMM`/`IMMM` cache sanitization and CRC64 repair, shared-handle backup/restore, bucket spillover, UNC/elevated mapped-drive resolution, automated test suite, Windows Optimizer, and built-in native thumbnail codecs.
+4. **Open-Source Codec Dependencies (`WinThumbsCodecs.dll` & `Codecs/`)**:
+   - **[`storytold/craft-libs`](https://github.com/storytold/craft-libs)** (`MIT OR Apache-2.0`) — memory-safe Rust decoders (`craft-psd`, `craft-cms`, `craft-eps`, `craft-ps`, `craft-cdr`, `craft-affinity`, `craft-raw`)
+   - **[PDFium](https://pdfium.googlesource.com/pdfium/) / [`bblanchon/pdfium-binaries`](https://github.com/bblanchon/pdfium-binaries)** (`chromium/8165`, `BSD-3-Clause` / `Apache-2.0` / `MIT`, third-party notices bundled in `Codecs/PDFIUM-LICENSE.txt`)
+   - **[`resvg`](https://github.com/linebender/resvg)** (`MPL-2.0`, statically compiled into `WinThumbsCodecs.dll` with external resource loading disabled) & **[`windows-rs`](https://github.com/microsoft/windows-rs)** (`MIT OR Apache-2.0`)
 
 ---
 
