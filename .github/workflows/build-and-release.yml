@@ -132,11 +132,34 @@ jobs:
             exit 1
           }
 
+      - name: Ensure Rust toolchain (>= 1.95) for WinThumbsCodecs
+        shell: pwsh
+        run: |
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $userCargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+            if (Test-Path $userCargoBin) {
+              "$userCargoBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              $env:PATH = "$userCargoBin;$env:PATH"
+            }
+          }
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          rustc --version
+          cargo --version
+
+      - name: Fetch PDFium & build/test WinThumbsCodecs (Release)
+        shell: pwsh
+        run: .\scripts\build-codecs.ps1 -Configuration Release -RunTests -NoCopyToOutput
+
       - name: Run unit and integration tests
         run: dotnet test WinThumbsPreloader/WinThumbsPreloader.Tests/WinThumbsPreloader.Tests.csproj --configuration Release --no-restore --verbosity normal
 
       - name: Build WinThumbsPreloader (Release win-x64)
         run: dotnet build WinThumbsPreloader/WinThumbsPreloader/WinThumbsPreloader.csproj --configuration Release -r win-x64 --no-self-contained
+
+      - name: Stage WinThumbsCodecs & PDFium into Release output
+        shell: pwsh
+        run: .\scripts\build-codecs.ps1 -Configuration Release -SkipPdfiumDownload -CopyToOutput
 
       - name: Compile Inno Setup installer & generate SHA-256 digest
         id: innosetup

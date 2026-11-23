@@ -3,6 +3,7 @@
 #define MyAppFilename MyAppName + ".exe"
 #define MyAppFilepath MyAppReleaseDirectory + "\" + MyAppFilename
 #define MyAppConfig  MyAppReleaseDirectory + "\" + MyAppName
+#define MyCodecsDir  MyAppReleaseDirectory + "\Codecs"
 #dim Version[4]
 #expr GetVersionComponents(MyAppFilepath, Version[0], Version[1], Version[2], Version[3])
 #define MyAppVersion Str(Version[0]) + "." + Str(Version[1]) + "." + Str(Version[2])
@@ -73,6 +74,10 @@ Source: "{#MyAppConfig}.dll.config";    DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyAppReleaseDirectory}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyAppReleaseDirectory}\ru\*.resources.dll"; DestDir: "{app}\Languages\ru"; Flags: ignoreversion
 Source: "{#MyAppReleaseDirectory}\Microsoft.Win32.TaskScheduler.dll"; DestDir: "{app}"; Flags: ignoreversion
+; Built-in native thumbnail codecs (COM out-of-process surrogate DLLs)
+Source: "{#MyCodecsDir}\WinThumbsCodecs.dll"; DestDir: "{app}\Codecs"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "{#MyCodecsDir}\pdfium.dll";         DestDir: "{app}\Codecs"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "{#MyCodecsDir}\PDFIUM-LICENSE.txt"; DestDir: "{app}\Codecs"; Flags: ignoreversion
 
 [Icons]
 Name: "{commonprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppFilename}"
@@ -80,6 +85,9 @@ Name: "{commonprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppFilename}"
 [Run]
 Filename: "{app}\{#MyAppFilename}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall shellexec; Check: not CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
 Filename: "{app}\{#MyAppFilename}"; Parameters: "-startminimized"; Flags: nowait postinstall shellexec skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
+
+[UninstallRun]
+Filename: "{app}\{#MyAppFilename}"; Parameters: "-uninstall-codecs"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallCodecs"
 
 [Registry]
 ; ---- Remove any stale per-user HKCU context menu overrides so canonical HKCR/HKLM entries take precedence ----
@@ -265,7 +273,7 @@ end;
 
 procedure CleanupAlternateDirectory(const CandidateDir, CanonicalDir: string);
 var
-  NormCandidate, NormCanonical, LangDir, RuLangDir: string;
+  NormCandidate, NormCanonical, LangDir, RuLangDir, CodecsDir: string;
 begin
   NormCandidate := NormalizeDirPath(CandidateDir);
   NormCanonical := NormalizeDirPath(CanonicalDir);
@@ -301,6 +309,15 @@ begin
 
   if DirExists(LangDir) and HasNoReparsePointInHierarchy(LangDir) then
     RemoveDir(LangDir);
+
+  CodecsDir := AddBackslash(NormCandidate) + 'Codecs';
+  if DirExists(CodecsDir) and HasNoReparsePointInHierarchy(CodecsDir) then
+  begin
+    DeleteFileIfSafeRegular(AddBackslash(CodecsDir) + 'WinThumbsCodecs.dll');
+    DeleteFileIfSafeRegular(AddBackslash(CodecsDir) + 'pdfium.dll');
+    DeleteFileIfSafeRegular(AddBackslash(CodecsDir) + 'PDFIUM-LICENSE.txt');
+    RemoveDir(CodecsDir);
+  end;
 
   RemoveDir(NormCandidate);
 end;
