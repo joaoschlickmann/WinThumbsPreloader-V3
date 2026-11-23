@@ -130,8 +130,14 @@ namespace WinThumbsPreloader.Forms
 
         public static string GetWebView2UserDataFolder()
         {
-            bool isAdmin = Program.IsRunningAsAdministrator();
-            string? envOverride = !isAdmin ? Environment.GetEnvironmentVariable("WTP_WEBVIEW2_UDF") : null;
+            return GetWebView2UserDataFolder(
+                Program.IsRunningAsAdministrator(),
+                Environment.GetEnvironmentVariable("WTP_WEBVIEW2_UDF"));
+        }
+
+        internal static string GetWebView2UserDataFolder(bool isAdmin, string? rawEnvOverride)
+        {
+            string? envOverride = !isAdmin ? rawEnvOverride : null;
             string candidate;
             if (!string.IsNullOrWhiteSpace(envOverride))
             {

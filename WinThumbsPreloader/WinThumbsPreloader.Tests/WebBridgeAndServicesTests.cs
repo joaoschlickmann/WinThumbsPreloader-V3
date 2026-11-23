@@ -391,18 +391,44 @@ namespace WinThumbsPreloader.Tests
         public void MainShellForm_GetWebView2UserDataFolder_RespectsEnvAndRejectsJunction()
         {
             string validUdf = Path.Combine(_tempDir, "WebView2Udf");
-            Environment.SetEnvironmentVariable("WTP_WEBVIEW2_UDF", validUdf);
-            string resolved = MainShellForm.GetWebView2UserDataFolder();
-            Assert.Equal(Path.GetFullPath(validUdf), resolved);
-            Assert.True(Directory.Exists(resolved));
+            string resolvedNonAdmin = MainShellForm.GetWebView2UserDataFolder(
+                isAdmin: false,
+                rawEnvOverride: validUdf);
+            Assert.Equal(Path.GetFullPath(validUdf), resolvedNonAdmin);
+            Assert.True(Directory.Exists(resolvedNonAdmin));
 
             string realUdfTarget = Path.Combine(_tempDir, "UdfTarget");
             Directory.CreateDirectory(realUdfTarget);
             string junctionUdf = Path.Combine(_tempDir, "UdfJunction");
             CreateNtfsJunction(junctionUdf, realUdfTarget);
 
-            Environment.SetEnvironmentVariable("WTP_WEBVIEW2_UDF", junctionUdf);
-            Assert.Throws<IOException>(() => MainShellForm.GetWebView2UserDataFolder());
+            Assert.Throws<IOException>(() =>
+                MainShellForm.GetWebView2UserDataFolder(
+                    isAdmin: false,
+                    rawEnvOverride: junctionUdf));
+
+            string resolvedAdmin = MainShellForm.GetWebView2UserDataFolder(
+                isAdmin: true,
+                rawEnvOverride: validUdf);
+            Assert.NotEqual(Path.GetFullPath(validUdf), resolvedAdmin);
+            Assert.EndsWith(
+                Path.Combine("WinThumbsPreloader", "WebView2-Admin"),
+                resolvedAdmin,
+                StringComparison.OrdinalIgnoreCase);
+
+            Environment.SetEnvironmentVariable("WTP_WEBVIEW2_UDF", validUdf);
+            string resolvedProcess = MainShellForm.GetWebView2UserDataFolder();
+            if (Program.IsRunningAsAdministrator())
+            {
+                Assert.EndsWith(
+                    Path.Combine("WinThumbsPreloader", "WebView2-Admin"),
+                    resolvedProcess,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                Assert.Equal(Path.GetFullPath(validUdf), resolvedProcess);
+            }
         }
 
         [Fact]
