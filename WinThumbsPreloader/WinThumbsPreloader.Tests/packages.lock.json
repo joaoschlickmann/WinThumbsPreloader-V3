@@ -54,6 +54,11 @@
           "Newtonsoft.Json": "13.0.1"
         }
       },
+      "Microsoft.Web.WebView2": {
+        "type": "Transitive",
+        "resolved": "1.0.4370.26",
+        "contentHash": "fCmdjhw8Gg+cbvEkyF+ygObcByFk35WVxTUmLkjSwjhDuLg4V9P7EVPn3rj3g9M2I3WHes/efHS2tIpGX/NCEA=="
+      },
       "Newtonsoft.Json": {
         "type": "Transitive",
         "resolved": "13.0.1",
@@ -107,6 +112,7 @@
       "winthumbspreloader": {
         "type": "Project",
         "dependencies": {
+          "Microsoft.Web.WebView2": "[1.0.4370.26, )",
           "TaskScheduler": "[2.10.1, )"
         }
       }

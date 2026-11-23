@@ -4,6 +4,7 @@
 #define MyAppFilepath MyAppReleaseDirectory + "\" + MyAppFilename
 #define MyAppConfig  MyAppReleaseDirectory + "\" + MyAppName
 #define MyCodecsDir  MyAppReleaseDirectory + "\Codecs"
+#define MyWebUiDir   MyAppReleaseDirectory + "\wwwroot"
 #dim Version[4]
 #expr GetVersionComponents(MyAppFilepath, Version[0], Version[1], Version[2], Version[3])
 #define MyAppVersion Str(Version[0]) + "." + Str(Version[1]) + "." + Str(Version[2])
@@ -64,6 +65,9 @@ ru.PreloadThumbnails=Загрузить эскизы
 en.PreloadThumbnailsRecursively=Preload thumbnails recursively
 ru.PreloadThumbnailsRecursively=Загрузить эскизы включая подпапки
 
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\wwwroot"
+
 [Files]
 ; Core app files
 Source: "{#MyAppFilepath}";               DestDir: "{app}"; Flags: ignoreversion
@@ -78,13 +82,21 @@ Source: "{#MyAppReleaseDirectory}\Microsoft.Win32.TaskScheduler.dll"; DestDir: "
 Source: "{#MyCodecsDir}\WinThumbsCodecs.dll"; DestDir: "{app}\Codecs"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "{#MyCodecsDir}\pdfium.dll";         DestDir: "{app}\Codecs"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "{#MyCodecsDir}\PDFIUM-LICENSE.txt"; DestDir: "{app}\Codecs"; Flags: ignoreversion
+; WebView2 bindings and embedded WebUI static assets
+Source: "{#MyAppReleaseDirectory}\Microsoft.Web.WebView2.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#MyAppReleaseDirectory}\Microsoft.Web.WebView2.WinForms.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#MyAppReleaseDirectory}\Microsoft.Web.WebView2.Wpf.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#MyAppReleaseDirectory}\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "{#MyAppReleaseDirectory}\runtimes\win-x64\native\WebView2Loader.dll"; DestDir: "{app}\runtimes\win-x64\native"; Flags: ignoreversion restartreplace uninsrestartdelete
+Source: "{#MyWebUiDir}\*"; DestDir: "{app}\wwwroot"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{commonprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppFilename}"
 
 [Run]
-Filename: "{app}\{#MyAppFilename}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall shellexec; Check: not CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
-Filename: "{app}\{#MyAppFilename}"; Parameters: "-startminimized"; Flags: nowait postinstall shellexec skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
+Filename: "{app}\{#MyAppFilename}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall runasoriginaluser skipifsilent
+Filename: "{app}\{#MyAppFilename}"; Flags: nowait runasoriginaluser skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCH')
+Filename: "{app}\{#MyAppFilename}"; Parameters: "-startminimized"; Flags: nowait runasoriginaluser skipifnotsilent; Check: CmdLineParamExists('/AUTOLAUNCHMINIMIZED')
 
 [UninstallRun]
 Filename: "{app}\{#MyAppFilename}"; Parameters: "-uninstall-codecs"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallCodecs"
@@ -177,7 +189,7 @@ begin
   begin
     SetEvent(EventHandle);
     CloseHandle(EventHandle);
-    Sleep(350);
+    Sleep(600);
   end;
 end;
 
@@ -274,6 +286,8 @@ end;
 procedure CleanupAlternateDirectory(const CandidateDir, CanonicalDir: string);
 var
   NormCandidate, NormCanonical, LangDir, RuLangDir, CodecsDir: string;
+  RuntimesDir, Win64Dir, NativeDir, WwwRootDir, AssetsDir, FullAssetPath: string;
+  FindRec: TFindRec;
 begin
   NormCandidate := NormalizeDirPath(CandidateDir);
   NormCanonical := NormalizeDirPath(CanonicalDir);
@@ -295,6 +309,10 @@ begin
   DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + '{#MyAppName}.dll.config');
   DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + '{#MyAppName}.exe.config');
   DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'Microsoft.Win32.TaskScheduler.dll');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'Microsoft.Web.WebView2.Core.dll');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'Microsoft.Web.WebView2.WinForms.dll');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'Microsoft.Web.WebView2.Wpf.dll');
+  DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'WebView2Loader.dll');
   DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'LICENSE.txt');
   DeleteFileIfSafeRegular(AddBackslash(NormCandidate) + 'icon.ico');
   DeleteUninstallerArtifactsIfSafe(NormCandidate);
@@ -317,6 +335,52 @@ begin
     DeleteFileIfSafeRegular(AddBackslash(CodecsDir) + 'pdfium.dll');
     DeleteFileIfSafeRegular(AddBackslash(CodecsDir) + 'PDFIUM-LICENSE.txt');
     RemoveDir(CodecsDir);
+  end;
+
+  RuntimesDir := AddBackslash(NormCandidate) + 'runtimes';
+  Win64Dir := AddBackslash(RuntimesDir) + 'win-x64';
+  NativeDir := AddBackslash(Win64Dir) + 'native';
+  if DirExists(NativeDir) and HasNoReparsePointInHierarchy(NativeDir) then
+  begin
+    DeleteFileIfSafeRegular(AddBackslash(NativeDir) + 'WebView2Loader.dll');
+    RemoveDir(NativeDir);
+  end;
+
+  if DirExists(Win64Dir) and HasNoReparsePointInHierarchy(Win64Dir) then
+    RemoveDir(Win64Dir);
+
+  if DirExists(RuntimesDir) and HasNoReparsePointInHierarchy(RuntimesDir) then
+    RemoveDir(RuntimesDir);
+
+  WwwRootDir := AddBackslash(NormCandidate) + 'wwwroot';
+  if DirExists(WwwRootDir) and HasNoReparsePointInHierarchy(WwwRootDir) then
+  begin
+    AssetsDir := AddBackslash(WwwRootDir) + 'assets';
+    if DirExists(AssetsDir) and HasNoReparsePointInHierarchy(AssetsDir) then
+    begin
+      if FindFirst(AddBackslash(AssetsDir) + '*', FindRec) then
+      begin
+        try
+          repeat
+            if (FindRec.Name <> '.') and (FindRec.Name <> '..') and
+               ((FindRec.Attributes and WTP_FILE_ATTRIBUTE_DIRECTORY) = 0) and
+               ((FindRec.Attributes and WTP_FILE_ATTRIBUTE_REPARSE_POINT) = 0) then
+            begin
+              FullAssetPath := AddBackslash(AssetsDir) + FindRec.Name;
+              DeleteFileIfSafeRegular(FullAssetPath);
+            end;
+          until not FindNext(FindRec);
+        finally
+          FindClose(FindRec);
+        end;
+      end;
+      RemoveDir(AssetsDir);
+    end;
+
+    DeleteFileIfSafeRegular(AddBackslash(WwwRootDir) + 'index.html');
+    DeleteFileIfSafeRegular(AddBackslash(WwwRootDir) + 'theme-init.js');
+    DeleteFileIfSafeRegular(AddBackslash(WwwRootDir) + 'favicon.svg');
+    RemoveDir(WwwRootDir);
   end;
 
   RemoveDir(NormCandidate);
@@ -378,6 +442,43 @@ begin
   DeleteFileIfSafeRegular(ExpandConstant('{userdesktop}\{#MyAppName}.lnk'));
 
   Result := '';
+end;
+
+function HasValidWebView2Version(const RootKey: Integer; const SubKey: string): Boolean;
+var
+  VersionValue: string;
+begin
+  Result := False;
+  if RegQueryStringValue(RootKey, SubKey, 'pv', VersionValue) then
+  begin
+    VersionValue := Trim(VersionValue);
+    Result := (VersionValue <> '') and (VersionValue <> '0.0.0.0');
+  end;
+end;
+
+function IsWebView2RuntimeInstalled(): Boolean;
+var
+  WebView2RegKey: string;
+begin
+  WebView2RegKey := 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  Result :=
+    HasValidWebView2Version(HKLM, WebView2RegKey) or
+    HasValidWebView2Version(HKLM32, WebView2RegKey) or
+    HasValidWebView2Version(HKCU, WebView2RegKey);
+end;
+
+procedure InitializeWizard();
+begin
+  if (not IsWebView2RuntimeInstalled()) and (not WizardSilent()) then
+  begin
+    SuppressibleMsgBox(
+      'Microsoft Edge WebView2 Runtime was not detected on this system.' + #13#10#13#10 +
+      'WinThumbsPreloader will install normally and automatically fall back to the classic desktop UI until the Microsoft Edge WebView2 Runtime is installed.',
+      mbInformation,
+      MB_OK,
+      IDOK
+    );
+  end;
 end;
 
 function IsInPath(Dir: string): Boolean;

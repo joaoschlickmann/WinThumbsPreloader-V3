@@ -242,6 +242,13 @@ namespace WinThumbsPreloader.Tests
             Assert.Contains("restartreplace uninsrestartdelete", issContent, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("[UninstallRun]", issContent, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("-uninstall-codecs", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("[InstallDelete]", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(@"{app}\wwwroot", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Microsoft.Web.WebView2.Core.dll", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Microsoft.Web.WebView2.WinForms.dll", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Microsoft.Web.WebView2.Wpf.dll", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("WebView2Loader.dll", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(@"runtimes\win-x64\native\WebView2Loader.dll", issContent, StringComparison.OrdinalIgnoreCase);
 
             var unknownFlagOptions = new Options(["-future-unknown-flag"]);
             Assert.True(unknownFlagOptions.unknownFlagProvided);

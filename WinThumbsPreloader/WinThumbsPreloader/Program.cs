@@ -9,7 +9,9 @@ using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using WinThumbsPreloader.Forms;
 using WinThumbsPreloader.Properties;
+using WinThumbsPreloader.Services;
 using static WinThumbsPreloader.Logger;
 
 namespace WinThumbsPreloader
@@ -17,6 +19,8 @@ namespace WinThumbsPreloader
     static class Program
     {
         public static Options AppOptions { get; internal set; }
+        public static MainShellForm MainShell { get; internal set; }
+        public static TrayHostController TrayHost { get; internal set; }
         public static AboutForm MainAboutForm { get; internal set; }
         public static CacheForm TrayCacheForm { get; internal set; }
 
@@ -26,6 +30,7 @@ namespace WinThumbsPreloader
         public static bool formOpen = false;
 
         private static SingleInstanceCoordinator _singleInstanceCoordinator;
+        private static ApplicationContext _shellContext;
 
         private const int SW_RESTORE = 9;
         private const int SW_SHOW = 5;
@@ -53,9 +58,11 @@ namespace WinThumbsPreloader
             WriteLine("Arguments: " + string.Join(" ", arguments), LoggingFrequency.PreloaderLogging);
 
             Options options = new Options(arguments);
+            bool restoredPostUpdateMinimized = false;
             if ((arguments == null || arguments.Length == 0) && AutoUpdater.ConsumePostUpdateLaunchMinimized())
             {
                 options.startMinimized = true;
+                restoredPostUpdateMinimized = true;
             }
             AppOptions = options;
 
@@ -120,7 +127,8 @@ namespace WinThumbsPreloader
 
             try
             {
-                if (!HandleElevationState(arguments))
+                string[] elevationArgs = restoredPostUpdateMinimized ? new[] { "-startminimized" } : arguments;
+                if (!HandleElevationState(elevationArgs))
                     return;
 
                 CacheForm.EnsureThumbnailCacheProtection();
@@ -187,11 +195,20 @@ namespace WinThumbsPreloader
                 return;
             }
 
+            if (TrayHost != null)
+            {
+                TrayHost.InvokeOnUiThread(action);
+                return;
+            }
+
             action();
         }
 
         private static Form GetUiInvokeTargetForm()
         {
+            if (MainShell != null && !MainShell.IsDisposed && MainShell.IsHandleCreated)
+                return MainShell;
+
             if (MainAboutForm != null && !MainAboutForm.IsDisposed && MainAboutForm.IsHandleCreated)
                 return MainAboutForm;
 
@@ -210,6 +227,23 @@ namespace WinThumbsPreloader
         public static void RestoreAndActivateExistingInstance(SingleInstanceActivationKind kind = SingleInstanceActivationKind.ShowMainWindow)
         {
             WriteLine($"Restoring and activating existing instance (Kind: {kind})", LoggingFrequency.GUILogging);
+
+            bool usingUnifiedShell =
+                (MainShell != null && !MainShell.IsDisposed) ||
+                (TrayHost != null && MainAboutForm == null && (TrayCacheForm == null || TrayCacheForm.IsDisposed));
+
+            if (usingUnifiedShell)
+            {
+                string targetView = kind switch
+                {
+                    SingleInstanceActivationKind.ReopenSettings => "settings",
+                    SingleInstanceActivationKind.ReopenOptimizer => "optimizer",
+                    SingleInstanceActivationKind.ReopenCodecs => "codecs",
+                    _ => null
+                };
+                ShowMainShell(targetView);
+                return;
+            }
 
             Form visibleDesktopForm = FindActiveVisibleDesktopForm();
 
@@ -266,6 +300,17 @@ namespace WinThumbsPreloader
                         if (!about.IsDisposed)
                             about.OpenFormCentered(new SettingsForm());
                     }));
+                }
+            }
+            else if (kind == SingleInstanceActivationKind.ReopenCodecs)
+            {
+                bool codecsAlreadyOpen = Application.OpenForms
+                    .Cast<Form>()
+                    .Any(f => f is CodecsForm && !f.IsDisposed && f.Visible);
+
+                if (!codecsAlreadyOpen && visibleDesktopForm != null && !visibleDesktopForm.IsDisposed)
+                {
+                    visibleDesktopForm.OpenSecondaryFormCentered(new CodecsForm());
                 }
             }
         }
@@ -367,6 +412,19 @@ namespace WinThumbsPreloader
         {
             try
             {
+                if (TrayHost != null)
+                {
+                    TrayHost.SetVisible(false);
+                    TrayHost.Dispose();
+                    TrayHost = null;
+                }
+
+                if (MainShell != null && !MainShell.IsDisposed)
+                {
+                    MainShell.Dispose();
+                    MainShell = null;
+                }
+
                 if (TrayCacheForm != null && !TrayCacheForm.IsDisposed)
                 {
                     TrayCacheForm.SetTrayIconVisible(false);
@@ -402,15 +460,87 @@ namespace WinThumbsPreloader
             }
         }
 
+        private static TrayHostController EnsureTrayHost()
+        {
+            if (TrayHost != null)
+                return TrayHost;
+
+            var cacheService = new CacheService();
+            var updateService = new UpdateService();
+            TrayHost = new TrayHostController(cacheService, updateService, view => ShowMainShell(view));
+            return TrayHost;
+        }
+
+        private static string ConsumeInitialShellView()
+        {
+            if (AppOptions == null)
+                return "preload";
+
+            if (AppOptions.reopenSettings)
+            {
+                AppOptions.reopenSettings = false;
+                return "settings";
+            }
+            if (AppOptions.reopenOptimizer)
+            {
+                AppOptions.reopenOptimizer = false;
+                return "optimizer";
+            }
+            if (AppOptions.reopenCodecs)
+            {
+                AppOptions.reopenCodecs = false;
+                return "codecs";
+            }
+
+            return "preload";
+        }
+
+        private static void DisposeTrayHost()
+        {
+            if (TrayHost == null)
+                return;
+
+            try
+            {
+                TrayHost.SetVisible(false);
+                TrayHost.Dispose();
+            }
+            catch
+            {
+                // Best effort tray disposal
+            }
+            TrayHost = null;
+        }
+
         private static void StartMinimized()
         {
             formOpen = true;
             Application.EnableVisualStyles();
             Application.SetHighDpiMode(HighDpiMode.SystemAware);
             Application.SetCompatibleTextRenderingDefault(false);
-            TrayCacheForm = new CacheForm();
+
+            if (AppOptions != null)
+                AppOptions.startMinimized = false;
+
+            if (MainShellForm.CanUseWebViewShell())
+            {
+                TrayHost = EnsureTrayHost();
+                TrayHost.SetVisible(true);
+                _ = TrayHost.InitializeMinimizedSessionAsync();
+
+                _shellContext = new ApplicationContext();
+                Application.Run(_shellContext);
+                return;
+            }
+
+            if (TrayCacheForm == null || TrayCacheForm.IsDisposed)
+                TrayCacheForm = new CacheForm();
+
             _ = TrayCacheForm.Handle;
-            Application.Run(TrayCacheForm);
+            TrayCacheForm.RefreshSettingsState();
+            TrayCacheForm.MinimizeToTray();
+            _shellContext = new ApplicationContext();
+            Application.Run(_shellContext);
         }
 
         private static void OpenAboutForm()
@@ -419,8 +549,101 @@ namespace WinThumbsPreloader
             Application.EnableVisualStyles();
             Application.SetHighDpiMode(HighDpiMode.SystemAware);
             Application.SetCompatibleTextRenderingDefault(false);
+
+            if (MainShellForm.CanUseWebViewShell())
+            {
+                TrayHost = EnsureTrayHost();
+                TrayHost.SetVisible(false);
+
+                string initialView = ConsumeInitialShellView();
+                MainShell = new MainShellForm(TrayHost, initialView);
+                MainShell.WebViewFallbackRequested += (_, _) => FallbackToLegacyAboutForm(MainShell);
+
+                _shellContext = new ApplicationContext();
+                MainShell.Show();
+                Application.Run(_shellContext);
+                return;
+            }
+
             MainAboutForm = new AboutForm();
             Application.Run(MainAboutForm);
+        }
+
+        public static void ShowMainShell(string view = null)
+        {
+            if (MainShellForm.CanUseWebViewShell())
+            {
+                TrayHost = EnsureTrayHost();
+                if (MainShell == null || MainShell.IsDisposed)
+                {
+                    MainShell = new MainShellForm(TrayHost, view ?? ConsumeInitialShellView());
+                    MainShell.WebViewFallbackRequested += (_, _) => FallbackToLegacyAboutForm(MainShell);
+                }
+
+                MainShell.ShowFromTray(view);
+                return;
+            }
+
+            DisposeTrayHost();
+            ShowMainAboutForm();
+
+            if (!string.IsNullOrWhiteSpace(view) && MainAboutForm != null && !MainAboutForm.IsDisposed)
+            {
+                string normalized = view.Trim().ToLowerInvariant();
+                Form targetForm = normalized switch
+                {
+                    "preload" => new BulkPreloaderForm(),
+                    "cache" => new CacheForm(),
+                    "schedule" => new ScheduleForm(),
+                    "codecs" => new CodecsForm(),
+                    "optimizer" => new WindowsOptimizerForm(),
+                    "settings" => new SettingsForm(),
+                    _ => null
+                };
+
+                if (targetForm != null)
+                {
+                    MainAboutForm.OpenSecondaryFormCentered(targetForm);
+                }
+            }
+        }
+
+        internal static void FallbackToLegacyAboutForm(MainShellForm failedShell)
+        {
+            try
+            {
+                if (failedShell != null && !failedShell.IsDisposed)
+                {
+                    failedShell.Hide();
+                    failedShell.Dispose();
+                }
+
+                if (ReferenceEquals(MainShell, failedShell))
+                {
+                    MainShell = null;
+                }
+            }
+            catch
+            {
+                // Ignore disposal issues during fallback
+            }
+
+            DisposeTrayHost();
+
+            if (MainAboutForm == null || MainAboutForm.IsDisposed)
+            {
+                MainAboutForm = new AboutForm();
+            }
+
+            if (_shellContext != null)
+            {
+                _shellContext.MainForm = MainAboutForm;
+            }
+
+            MainAboutForm.Show();
+            MainAboutForm.WindowState = FormWindowState.Normal;
+            MainAboutForm.ShowInTaskbar = true;
+            BringWindowToFront(MainAboutForm);
         }
 
         public static void MinimizeAboutFormToTray(AboutForm aboutForm)
@@ -546,6 +769,17 @@ namespace WinThumbsPreloader
 
         public static bool RestartAsAdmin(string[] args)
         {
+            return RestartAsAdmin(args, showDialogs: true);
+        }
+
+        public static bool RestartAsAdmin(string[] args, bool showDialogs)
+        {
+            Form uiTarget = GetUiInvokeTargetForm();
+            if (uiTarget != null && !uiTarget.IsDisposed && uiTarget.IsHandleCreated && uiTarget.InvokeRequired)
+            {
+                return (bool)uiTarget.Invoke(new Func<bool>(() => RestartAsAdmin(args, showDialogs)));
+            }
+
             var psi = new ProcessStartInfo
             {
                 FileName = Application.ExecutablePath,
@@ -584,11 +818,14 @@ namespace WinThumbsPreloader
 
                 // User cancelled the UAC prompt
                 WriteLine("User cancelled admin elevation: " + ex.Message, LoggingFrequency.GUILogging);
-                MessageBox.Show(
-                    "Administrator elevation was cancelled.\nThe program will continue without elevation.",
-                    "Elevation Cancelled",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                if (showDialogs)
+                {
+                    MessageBox.Show(
+                        "Administrator elevation was cancelled.\nThe program will continue without elevation.",
+                        "Elevation Cancelled",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
                 return false;
             }
             catch (Exception ex)
@@ -599,11 +836,14 @@ namespace WinThumbsPreloader
                 }
 
                 WriteLine("Failed to restart as administrator: " + ex.Message, LoggingFrequency.GUILogging);
-                MessageBox.Show(
-                    "Failed to restart as administrator.\n" + ex.Message,
-                    "Elevation Error",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                if (showDialogs)
+                {
+                    MessageBox.Show(
+                        "Failed to restart as administrator.\n" + ex.Message,
+                        "Elevation Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
                 return false;
             }
         }

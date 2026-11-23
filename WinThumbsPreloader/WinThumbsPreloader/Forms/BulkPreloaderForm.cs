@@ -8,6 +8,7 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Windows.Forms;
 using WinThumbsPreloader.Properties;
+using WinThumbsPreloader.Services;
 using static WinThumbsPreloader.Logger;
 
 #nullable enable
@@ -31,11 +32,7 @@ namespace WinThumbsPreloader.Forms
         private bool presetsVisible = false;
         private List<BulkPreset> _presets = new List<BulkPreset>();
 
-        private static string PresetsFilePath =>
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "WinThumbsPreloader",
-                "BulkPreloaderPresets.json");
+        private static string PresetsFilePath => PreloadService.DefaultPresetsFilePath;
 
         public BulkPreloaderForm()
         {
@@ -501,44 +498,12 @@ namespace WinThumbsPreloader.Forms
 
         private void LoadPresetsFromDisk()
         {
-            try
-            {
-                string filePath = PresetsFilePath;
-                if (!File.Exists(filePath))
-                    return;
-
-                // Validated via FileInfo below
-                var fileInfo = new FileInfo(filePath);
-                if (!fileInfo.Exists || fileInfo.Length > 1024 * 1024 || (fileInfo.Attributes & FileAttributes.ReparsePoint) != 0) return;
-                string json = File.ReadAllText(filePath);
-                var loaded = JsonSerializer.Deserialize<List<BulkPreset>>(json, new JsonSerializerOptions { MaxDepth = 16 });
-                if (loaded != null)
-                {
-                    _presets = loaded;
-                }
-            }
-            catch (Exception ex)
-            {
-                WriteLine("Failed to load Bulk Preloader presets: " + ex.Message, LoggingFrequency.GUILogging);
-            }
+            _presets = PreloadService.LoadPresetsFromDisk();
         }
 
         private void SavePresetsToDisk()
         {
-            try
-            {
-                string filePath = PresetsFilePath;
-                string? dir = Path.GetDirectoryName(filePath);
-                if (!string.IsNullOrWhiteSpace(dir))
-                    Directory.CreateDirectory(dir);
-
-                string json = JsonSerializer.Serialize(_presets, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(filePath, json);
-            }
-            catch (Exception ex)
-            {
-                WriteLine("Failed to save Bulk Preloader presets: " + ex.Message, LoggingFrequency.GUILogging);
-            }
+            PreloadService.SavePresetsToDisk(_presets);
         }
 
         private void RefreshPresetsListBox(string? selectPresetName = null)

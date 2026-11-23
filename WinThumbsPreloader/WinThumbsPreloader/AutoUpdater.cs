@@ -469,6 +469,11 @@ namespace WinThumbsPreloader
                 baseLocalAppData = Path.GetTempPath();
 
             string updatesDir = Path.Combine(baseLocalAppData, "WinThumbsPreloader", "Updates");
+            if (PathSecurity.HasReparsePointOrJunctionInPath(updatesDir, rejectAnyLeafOrParentReparsePoint: false) ||
+                PathSecurity.IsReparsePoint(updatesDir))
+            {
+                throw new InvalidOperationException("Update directory cannot traverse or be a symbolic link or junction.");
+            }
             DirectoryInfo dirInfo = Directory.CreateDirectory(updatesDir);
             if ((dirInfo.Attributes & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidOperationException("Update directory cannot be a symbolic link or junction.");

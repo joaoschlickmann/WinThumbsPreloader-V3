@@ -261,6 +261,19 @@ namespace WinThumbsPreloader
                 };
             }
 
+            if (PathSecurity.HasReparsePointOrJunctionInPath(normalizedPath, rejectAnyLeafOrParentReparsePoint: false) ||
+                PathSecurity.IsReparsePoint(normalizedPath))
+            {
+                return new LogFolderStatusInfo
+                {
+                    Status = LogFolderStatus.InvalidPath,
+                    Message = "Status: Refusing reparse-point or junction logger folder.",
+                    NormalizedPath = normalizedPath,
+                    IsRunningAsAdmin = runningAsAdmin,
+                    UsesDefaultPath = false
+                };
+            }
+
             bool restricted = IsRestrictedPath(normalizedPath);
 
             try
@@ -303,7 +316,9 @@ namespace WinThumbsPreloader
 
                 string existingParent = FindExistingParentDirectory(normalizedPath);
 
-                if (string.IsNullOrWhiteSpace(existingParent))
+                if (string.IsNullOrWhiteSpace(existingParent) ||
+                    PathSecurity.HasReparsePointOrJunctionInPath(existingParent, rejectAnyLeafOrParentReparsePoint: false) ||
+                    PathSecurity.IsReparsePoint(existingParent))
                 {
                     return new LogFolderStatusInfo
                     {
@@ -365,8 +380,51 @@ namespace WinThumbsPreloader
 
         public static bool TryValidateLogFolderPath(string selectedPath, IWin32Window owner, out string normalizedPath, out string message)
         {
+            if (TryValidateLogFolderPath(selectedPath, confirmAdminWarning: false, out normalizedPath, out message, out bool requiresAdminConfirmation))
+            {
+                return true;
+            }
+
+            if (!requiresAdminConfirmation)
+            {
+                return false;
+            }
+
+            DialogResult choice = MessageBox.Show(
+                owner,
+                message +
+                Environment.NewLine +
+                Environment.NewLine +
+                "Logging may fail when WinThumbsPreloader is launched " +
+                "normally without administrator privileges." +
+                Environment.NewLine +
+                Environment.NewLine +
+                "Do you still want to use this folder?",
+                "Logger Folder",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning
+            );
+
+            if (choice != DialogResult.Yes)
+            {
+                normalizedPath = string.Empty;
+                message = "Logger folder selection cancelled.";
+                return false;
+            }
+
+            return TryValidateLogFolderPath(selectedPath, confirmAdminWarning: true, out normalizedPath, out message, out _);
+        }
+
+        public static bool TryValidateLogFolderPath(
+            string selectedPath,
+            bool confirmAdminWarning,
+            out string normalizedPath,
+            out string message,
+            out bool requiresAdminConfirmation)
+        {
             normalizedPath = string.Empty;
             message = string.Empty;
+            requiresAdminConfirmation = false;
 
             if (string.IsNullOrWhiteSpace(selectedPath))
             {
@@ -382,33 +440,30 @@ namespace WinThumbsPreloader
                 return false;
             }
 
-            if (statusInfo.Status == LogFolderStatus.WritableAdmin || statusInfo.Status == LogFolderStatus.WillBeCreatedAdmin)
+            if (PathSecurity.HasReparsePointOrJunctionInPath(statusInfo.NormalizedPath, rejectAnyLeafOrParentReparsePoint: false) ||
+                PathSecurity.IsReparsePoint(statusInfo.NormalizedPath))
             {
-                DialogResult choice = MessageBox.Show(
-                    owner,
-                    statusInfo.Message +
-                    Environment.NewLine +
-                    Environment.NewLine +
-                    "Logging may fail when WinThumbsPreloader is launched " +
-                    "normally without administrator privileges." +
-                    Environment.NewLine +
-                    Environment.NewLine +
-                    "Do you still want to use this folder?",
-                    "Logger Folder",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning
-                );
+                message = "Status: Refusing reparse-point or junction logger folder.";
+                return false;
+            }
 
-                if (choice != DialogResult.Yes)
-                {
-                    message = "Logger folder selection cancelled.";
-                    return false;
-                }
+            if ((statusInfo.Status == LogFolderStatus.WritableAdmin || statusInfo.Status == LogFolderStatus.WillBeCreatedAdmin) &&
+                !confirmAdminWarning)
+            {
+                requiresAdminConfirmation = true;
+                normalizedPath = statusInfo.NormalizedPath;
+                message = statusInfo.Message;
+                return false;
             }
 
             try
             {
-                Directory.CreateDirectory(statusInfo.NormalizedPath);
+                DirectoryInfo dirInfo = Directory.CreateDirectory(statusInfo.NormalizedPath);
+                if ((dirInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    message = "Refusing to use a reparse-point logger folder.";
+                    return false;
+                }
             }
             catch (Exception ex)
             {

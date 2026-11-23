@@ -1,0 +1,136 @@
+:root {
+  /* Typography */
+  --ds-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ds-font-mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", Consolas, monospace;
+
+  /* Spacing rhythm (4px base) */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-space-8: 32px;
+  --ds-space-10: 40px;
+  --ds-space-20: 80px;
+
+  /* Category radii */
+  --ds-radius-item: 8px;
+  --ds-radius-popover: 12px;
+  --ds-radius-input: 14px;
+  --ds-radius-card: 16px;
+  --ds-radius-modal: 20px;
+  --ds-radius-panel: 24px;
+  --ds-radius-pill: 100px;
+
+  /* Motion timings */
+  --ds-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ds-ease-switch: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-duration-fast: 150ms;
+  --ds-duration-base: 200ms;
+  --ds-duration-modal: 240ms;
+  --ds-duration-progress: 300ms;
+
+  /* Dark theme base tokens (Polished Obsidian) */
+  --ds-base-black: #000000;
+  --ds-obsidian: #050505;
+  --ds-surface: #131313;
+  --ds-surface-dim: #0e0e0e;
+  --ds-surface-bright: #2a2a2a;
+  --ds-primary: #ffffff;
+  --ds-muted: #888888;
+  --ds-glass-bg: rgba(255, 255, 255, 0.02);
+  --ds-glass-border: rgba(255, 255, 255, 0.08);
+  --ds-glass-active: rgba(255, 255, 255, 0.15);
+  --ds-error: #ffb4ab;
+  --ds-error-bg: rgba(255, 180, 171, 0.1);
+  --ds-error-border: rgba(255, 180, 171, 0.3);
+  --ds-warning: #ffdc9c;
+  --ds-warning-bg: rgba(255, 170, 50, 0.1);
+  --ds-warning-border: rgba(255, 170, 50, 0.3);
+  --ds-backdrop: rgba(0, 0, 0, 0.7);
+  --ds-shadow-popover: 0 10px 40px rgba(0, 0, 0, 0.5);
+  --ds-scrollbar-thumb: #6b6b6b;
+  --ds-scrollbar-track: #0e0e0e;
+
+  color-scheme: light dark;
+
+  &:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+  }
+
+  &:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ds-base-black: #000000;
+  --ds-obsidian: #050505;
+  --ds-surface: #131313;
+  --ds-surface-dim: #0e0e0e;
+  --ds-surface-bright: #2a2a2a;
+  --ds-primary: #ffffff;
+  --ds-muted: #888888;
+  --ds-glass-bg: rgba(255, 255, 255, 0.02);
+  --ds-glass-border: rgba(255, 255, 255, 0.08);
+  --ds-glass-active: rgba(255, 255, 255, 0.15);
+  --ds-error: #ffb4ab;
+  --ds-error-bg: rgba(255, 180, 171, 0.1);
+  --ds-error-border: rgba(255, 180, 171, 0.3);
+  --ds-warning: #ffdc9c;
+  --ds-warning-bg: rgba(255, 170, 50, 0.1);
+  --ds-warning-border: rgba(255, 170, 50, 0.3);
+  --ds-backdrop: rgba(0, 0, 0, 0.7);
+  --ds-shadow-popover: 0 10px 40px rgba(0, 0, 0, 0.5);
+  --ds-scrollbar-thumb: #6b6b6b;
+  --ds-scrollbar-track: #0e0e0e;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --ds-base-black: #f8fafc;
+    --ds-obsidian: #ffffff;
+    --ds-surface: #f1f5f9;
+    --ds-surface-dim: #e2e8f0;
+    --ds-surface-bright: #ffffff;
+    --ds-primary: #0f172a;
+    --ds-muted: #475569;
+    --ds-glass-bg: rgba(0, 0, 0, 0.03);
+    --ds-glass-border: rgba(0, 0, 0, 0.08);
+    --ds-glass-active: rgba(0, 0, 0, 0.15);
+    --ds-error: #ba1a1a;
+    --ds-error-bg: rgba(186, 26, 26, 0.1);
+    --ds-error-border: rgba(186, 26, 26, 0.3);
+    --ds-warning: #995500;
+    --ds-warning-bg: rgba(230, 120, 0, 0.1);
+    --ds-warning-border: rgba(230, 120, 0, 0.3);
+    --ds-backdrop: rgba(0, 0, 0, 0.7);
+    --ds-shadow-popover: 0 10px 40px rgba(15, 23, 42, 0.14);
+    --ds-scrollbar-thumb: #64748b;
+    --ds-scrollbar-track: #e2e8f0;
+  }
+}
+
+:root[data-theme="light"] {
+  --ds-base-black: #f8fafc;
+  --ds-obsidian: #ffffff;
+  --ds-surface: #f1f5f9;
+  --ds-surface-dim: #e2e8f0;
+  --ds-surface-bright: #ffffff;
+  --ds-primary: #0f172a;
+  --ds-muted: #475569;
+  --ds-glass-bg: rgba(0, 0, 0, 0.03);
+  --ds-glass-border: rgba(0, 0, 0, 0.08);
+  --ds-glass-active: rgba(0, 0, 0, 0.15);
+  --ds-error: #ba1a1a;
+  --ds-error-bg: rgba(186, 26, 26, 0.1);
+  --ds-error-border: rgba(186, 26, 26, 0.3);
+  --ds-warning: #995500;
+  --ds-warning-bg: rgba(230, 120, 0, 0.1);
+  --ds-warning-border: rgba(230, 120, 0, 0.3);
+  --ds-backdrop: rgba(0, 0, 0, 0.7);
+  --ds-shadow-popover: 0 10px 40px rgba(15, 23, 42, 0.14);
+  --ds-scrollbar-thumb: #64748b;
+  --ds-scrollbar-track: #e2e8f0;
+}

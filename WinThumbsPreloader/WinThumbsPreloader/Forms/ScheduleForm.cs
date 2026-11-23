@@ -368,15 +368,15 @@ namespace WinThumbsPreloader
             if (arguments != null)
             {
                 // Extract multithreading argument
-                MultithreadedCheckBox.Checked = arguments.Contains("-m");
+                MultithreadedCheckBox.Checked = Regex.IsMatch(arguments, @"(?:^|\s)-m(?:$|\s|:|\d)", RegexOptions.IgnoreCase);
                 WriteLine($"Multithreaded: {MultithreadedCheckBox.Checked}", LoggingFrequency.DebugLogging);
-                var match = Regex.Match(arguments, @"-m:(\d+)");
+                var match = Regex.Match(arguments, @"(?:^|\s)-m:(\d+)", RegexOptions.IgnoreCase);
                 if (match.Success)
                 {
                     if (int.TryParse(match.Groups[1].Value, out int parsedThreads))
                         ThreadsNumericUpDown.Value = Math.Clamp(parsedThreads, (int)ThreadsNumericUpDown.Minimum, (int)ThreadsNumericUpDown.Maximum);
                 }
-                else if (arguments.Contains("-m"))
+                else if (MultithreadedCheckBox.Checked)
                 {
                     ThreadsNumericUpDown.Value = 0;  // -m without a specific thread count
                 }
@@ -399,7 +399,7 @@ namespace WinThumbsPreloader
 
                 remainingArgs = Regex.Replace(remainingArgs, "\"[^\"]+\"", " ");
 
-                var rawDrivePaths = Regex.Split(remainingArgs, @"(?=(\b[A-Za-z]:\\)|(\\\\[^\\\s]+\\))")
+                var rawDrivePaths = Regex.Split(remainingArgs, @"(?=(?:\b[A-Za-z]:\\)|(?:\\\\[^\\\s]+\\))")
                                          .Where(path => !string.IsNullOrWhiteSpace(path))
                                          .ToList();
                 WriteLine($"Raw drive paths: {string.Join(", ", rawDrivePaths)}", LoggingFrequency.DebugLogging);

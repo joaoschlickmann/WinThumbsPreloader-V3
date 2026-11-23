@@ -193,7 +193,7 @@ namespace WinThumbsPreloader
             CommasAndSpaces
         }
 
-        private static string OrganizeExtensions(string text, SortingMethod method)
+        internal static string OrganizeExtensions(string text, SortingMethod method)
         {
             WriteLine("Organizing extensions", LoggingFrequency.DebugLogging);
             var extensions = text.Split([',', ' ', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries);

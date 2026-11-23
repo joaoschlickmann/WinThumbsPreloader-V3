@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Principal;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using WinThumbsPreloader.Forms;
@@ -496,6 +497,11 @@ namespace WinThumbsPreloader
         }
 
         private static bool _autoRestoreFailedUntilCacheGrows = false;
+        internal static bool AutoRestoreFailedUntilCacheGrows
+        {
+            get => _autoRestoreFailedUntilCacheGrows;
+            set => _autoRestoreFailedUntilCacheGrows = value;
+        }
 
         private async void AutoBackupThumbsCache_Tick(object sender, EventArgs e)
         {
@@ -608,7 +614,14 @@ namespace WinThumbsPreloader
 
         private string FormatSize(long bytes)
         {
-            string individualFormat = format;
+            return FormatByteSize(bytes, format);
+        }
+
+        internal static string FormatByteSize(long bytes, string sizeFormat = null)
+        {
+            string individualFormat = string.IsNullOrWhiteSpace(sizeFormat)
+                ? Properties.Settings.Default.CacheSizeFormat
+                : sizeFormat;
             // Choose the format based on the size if format is set to "auto"
             if (individualFormat == "Auto")
             {
@@ -726,6 +739,18 @@ namespace WinThumbsPreloader
                 };
             }
 
+            if (PathSecurity.HasReparsePointOrJunctionInPath(normalizedPath, rejectAnyLeafOrParentReparsePoint: false) ||
+                PathSecurity.IsReparsePoint(normalizedPath))
+            {
+                return new BackupFolderStatusInfo
+                {
+                    Status = BackupFolderStatus.InvalidPath,
+                    Message = "Status: Refusing reparse-point or junction path.",
+                    NormalizedPath = normalizedPath,
+                    IsRunningAsAdmin = runningAsAdmin
+                };
+            }
+
             bool restricted = IsRestrictedPath(normalizedPath);
 
             try
@@ -765,7 +790,9 @@ namespace WinThumbsPreloader
 
                 string parent = FindExistingParentDirectory(normalizedPath);
 
-                if (string.IsNullOrWhiteSpace(parent))
+                if (string.IsNullOrWhiteSpace(parent) ||
+                    PathSecurity.HasReparsePointOrJunctionInPath(parent, rejectAnyLeafOrParentReparsePoint: false) ||
+                    PathSecurity.IsReparsePoint(parent))
                 {
                     return new BackupFolderStatusInfo
                     {
@@ -844,6 +871,7 @@ namespace WinThumbsPreloader
         private const string BackupInfoFileName = ".WinThumbsPreloader_BackupInfo.txt";
 
         static readonly string explorerPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\Windows\Explorer");
+        internal static string ExplorerCacheDirectory => explorerPath;
 
         private static string PortableBackupPath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, BackupFolderName);
 
@@ -1012,7 +1040,55 @@ namespace WinThumbsPreloader
 
         public static bool TrySetBackupFolderPath(string selectedPath, IWin32Window owner, out string message)
         {
+            if (TrySetBackupFolderPath(
+                selectedPath,
+                confirmAdminWarning: false,
+                out message,
+                out bool requiresAdminConfirmation,
+                out _))
+            {
+                return true;
+            }
+
+            if (!requiresAdminConfirmation)
+            {
+                return false;
+            }
+
+            DialogResult choice = MessageBox.Show(
+                owner,
+                message + "\n\n" +
+                "This folder works while the app is running as administrator, but backups may fail when the app is launched normally.\n\n" +
+                "Do you still want to use this folder?",
+                "Backup Folder",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning
+            );
+
+            if (choice != DialogResult.Yes)
+            {
+                message = "Backup folder selection cancelled.";
+                return false;
+            }
+
+            return TrySetBackupFolderPath(
+                selectedPath,
+                confirmAdminWarning: true,
+                out message,
+                out _,
+                out _);
+        }
+
+        internal static bool TrySetBackupFolderPath(
+            string selectedPath,
+            bool confirmAdminWarning,
+            out string message,
+            out bool requiresAdminConfirmation,
+            out BackupFolderStatusInfo statusInfo)
+        {
             message = string.Empty;
+            requiresAdminConfirmation = false;
+            statusInfo = GetBackupFolderStatusInfo(selectedPath);
 
             string normalizedPath;
 
@@ -1038,37 +1114,36 @@ namespace WinThumbsPreloader
                 return false;
             }
 
-            BackupFolderStatusInfo statusInfo = GetBackupFolderStatusInfo(normalizedPath);
-
             if (!statusInfo.CanUseForBackup)
             {
                 message = statusInfo.Message;
                 return false;
             }
 
-            if (statusInfo.Status == BackupFolderStatus.WritableAdmin ||
-                statusInfo.Status == BackupFolderStatus.WillBeCreatedAdmin)
+            if (PathSecurity.HasReparsePointOrJunctionInPath(statusInfo.NormalizedPath, rejectAnyLeafOrParentReparsePoint: false) ||
+                PathSecurity.IsReparsePoint(statusInfo.NormalizedPath))
             {
-                DialogResult choice = MessageBox.Show(
-                    owner,
-                    statusInfo.Message + "\n\n" +
-                    "This folder works while the app is running as administrator, but backups may fail when the app is launched normally.\n\n" +
-                    "Do you still want to use this folder?",
-                    "Backup Folder",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning
-                );
+                message = "The backup folder cannot be or traverse a reparse point or junction.";
+                return false;
+            }
 
-                if (choice != DialogResult.Yes)
-                {
-                    message = "Backup folder selection cancelled.";
-                    return false;
-                }
+            if ((statusInfo.Status == BackupFolderStatus.WritableAdmin ||
+                 statusInfo.Status == BackupFolderStatus.WillBeCreatedAdmin) &&
+                !confirmAdminWarning)
+            {
+                requiresAdminConfirmation = true;
+                message = statusInfo.Message;
+                return false;
             }
 
             try
             {
-                Directory.CreateDirectory(statusInfo.NormalizedPath);
+                DirectoryInfo dirInfo = Directory.CreateDirectory(statusInfo.NormalizedPath);
+                if ((dirInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    message = "The backup folder cannot be a reparse point.";
+                    return false;
+                }
             }
             catch (Exception ex)
             {
@@ -1340,9 +1415,17 @@ namespace WinThumbsPreloader
 
         public static long GetExplorerDbFileSize(uint size)
         {
+            return GetExplorerDbFileSizeByName(size.ToString());
+        }
+
+        internal static long GetExplorerDbFileSizeByName(string streamName)
+        {
+            if (string.IsNullOrWhiteSpace(streamName))
+                return 0;
+
             try
             {
-                string dbPath = Path.Combine(explorerPath, $"thumbcache_{size}.db");
+                string dbPath = Path.Combine(explorerPath, $"thumbcache_{streamName}.db");
                 var info = new FileInfo(dbPath);
                 return info.Exists ? info.Length : 0;
             }
@@ -1610,6 +1693,43 @@ namespace WinThumbsPreloader
             SetCacheOutput(message);
         }
 
+        private sealed class ProgressBarReporter : IProgress<int>
+        {
+            private readonly ProgressBar _bar;
+            private readonly object _sync = new();
+            private Task _pending = Task.CompletedTask;
+
+            public ProgressBarReporter(ProgressBar bar)
+            {
+                _bar = bar;
+            }
+
+            public void Report(int value)
+            {
+                lock (_sync)
+                {
+                    _pending = ChainUpdateAsync(_pending, _bar, value);
+                }
+            }
+
+            private static async Task ChainUpdateAsync(Task previous, ProgressBar bar, int value)
+            {
+                try { await previous.ConfigureAwait(false); } catch { }
+                try { await UpdateProgressBarAsync(bar, value).ConfigureAwait(false); } catch { }
+            }
+
+            public async Task FinishAndHideAsync()
+            {
+                Task pending;
+                lock (_sync)
+                {
+                    pending = _pending;
+                }
+                try { await pending.ConfigureAwait(false); } catch { }
+                HideProgressBar(_bar);
+            }
+        }
+
         public static async Task<Success> BackupThumbsCacheAsync(ProgressBar progressBar)
         {
             CacheOperationResult result = await BackupThumbsCacheDetailedAsync(progressBar);
@@ -1618,10 +1738,26 @@ namespace WinThumbsPreloader
 
         public static async Task<CacheOperationResult> BackupThumbsCacheDetailedAsync(ProgressBar progressBar)
         {
+            if (progressBar == null)
+                return await BackupThumbsCacheDetailedAsync((IProgress<int>)null, CancellationToken.None);
+
+            var reporter = new ProgressBarReporter(progressBar);
+            try
+            {
+                return await BackupThumbsCacheDetailedAsync(reporter, CancellationToken.None);
+            }
+            finally
+            {
+                await reporter.FinishAndHideAsync();
+            }
+        }
+
+        internal static async Task<CacheOperationResult> BackupThumbsCacheDetailedAsync(
+            IProgress<int> progress,
+            CancellationToken cancellationToken = default)
+        {
             if (!TryGetBackupPath(out string currentBackupPath))
             {
-                HideProgressBar(progressBar);
-
                 return CacheOperationResult.Fail(CacheOperationFailureReason.BackupPathNotConfigured, "No backup folder selected. Choose a backup folder before backing up.");
             }
 
@@ -1629,8 +1765,6 @@ namespace WinThumbsPreloader
 
             if (lockResult != CacheBackupLock.AcquireResult.Acquired)
             {
-                HideProgressBar(progressBar);
-
                 return lockResult switch
                 {
                     CacheBackupLock.AcquireResult.AlreadyHeldByThisProcess =>
@@ -1671,7 +1805,7 @@ namespace WinThumbsPreloader
 
             try
             {
-                return await Task.Run(async () =>
+                return await Task.Run(() =>
                 {
                     Success result = Success.Success;
                     bool allowPartial = Settings.Default.BackupRestoreClearSafety == "Allow Partial Copy";
@@ -1684,8 +1818,6 @@ namespace WinThumbsPreloader
                     {
                         if (!TryEnsureWritableBackupFolder(currentBackupPath, out string writableMessage))
                         {
-                            HideProgressBar(progressBar);
-
                             return CacheOperationResult.Fail(CacheOperationFailureReason.PermissionDenied, writableMessage);
                         }
 
@@ -1707,15 +1839,13 @@ namespace WinThumbsPreloader
                         if (sourceFiles.Length == 0)
                         {
                             DeleteDirectory(tempPath);
-                            HideProgressBar(progressBar);
-
                             return CacheOperationResult.Fail(CacheOperationFailureReason.NoSourceFiles, "No Explorer thumbnail cache files were found to back up.");
                         }
 
                         int totalSteps = sourceFiles.Length + existingFiles.Length + sourceFiles.Length;
                         int completed = 0;
 
-                        await UpdateProgressBarAsync(progressBar, 0);
+                        progress?.Report(0);
 
                         int copyFailures = 0;
                         int thumbCacheCopyFailures = 0;
@@ -1727,6 +1857,12 @@ namespace WinThumbsPreloader
 
                         foreach (string src in orderedSourceFiles)
                         {
+                            if (cancellationToken.IsCancellationRequested)
+                            {
+                                DeleteDirectory(tempPath);
+                                return CacheOperationResult.Fail(CacheOperationFailureReason.Unknown, "Thumbnail cache backup cancelled.");
+                            }
+
                             string fileName = Path.GetFileName(src);
                             string dest = Path.Combine(tempPath, fileName);
 
@@ -1748,8 +1884,6 @@ namespace WinThumbsPreloader
                                 if (!allowPartial)
                                 {
                                     DeleteDirectory(tempPath);
-                                    HideProgressBar(progressBar);
-
                                     return CacheOperationResult.Fail(
                                         sawPermissionFailure
                                             ? CacheOperationFailureReason.PermissionDenied
@@ -1763,7 +1897,7 @@ namespace WinThumbsPreloader
                             }
 
                             completed++;
-                            await UpdateProgressBarAsync(progressBar, completed * 100 / totalSteps);
+                            progress?.Report(completed * 100 / totalSteps);
                         }
 
                         int totalFiles = sourceFiles.Length;
@@ -1781,7 +1915,6 @@ namespace WinThumbsPreloader
 
                                 DeleteDirectory(tempPath);
                                 DeleteDirectory(restorePath);
-                                HideProgressBar(progressBar);
 
                                 return CacheOperationResult.Fail(
                                     sawPermissionFailure
@@ -1828,7 +1961,6 @@ namespace WinThumbsPreloader
                                     RollbackBackup(currentBackupPath, restorePath, movedOldBackupFileNames, newBackupFileNamesWritten);
 
                                     DeleteDirectory(tempPath);
-                                    HideProgressBar(progressBar);
 
                                     return CacheOperationResult.Fail(
                                         sawPermissionFailure
@@ -1845,7 +1977,7 @@ namespace WinThumbsPreloader
                             }
 
                             completed++;
-                            await UpdateProgressBarAsync(progressBar, completed * 100 / totalSteps);
+                            progress?.Report(completed * 100 / totalSteps);
                         }
 
                         foreach (string tempCache in Directory.GetFiles(tempPath, "*.db"))
@@ -1870,7 +2002,6 @@ namespace WinThumbsPreloader
                                     RollbackBackup(currentBackupPath, restorePath, movedOldBackupFileNames, newBackupFileNamesWritten);
 
                                     DeleteDirectory(tempPath);
-                                    HideProgressBar(progressBar);
 
                                     return CacheOperationResult.Fail(
                                         sawPermissionFailure
@@ -1887,7 +2018,7 @@ namespace WinThumbsPreloader
                             }
 
                             completed++;
-                            await UpdateProgressBarAsync(progressBar, completed * 100 / totalSteps);
+                            progress?.Report(completed * 100 / totalSteps);
                         }
 
                         // In partial mode, preserve any previous backup files that were not replaced in this pass
@@ -1913,8 +2044,7 @@ namespace WinThumbsPreloader
                         DeleteDirectory(tempPath);
                         DeleteDirectory(restorePath);
 
-                        await UpdateProgressBarAsync(progressBar, 100);
-                        HideProgressBar(progressBar);
+                        progress?.Report(100);
 
                         if (result == Success.PartialSuccess)
                         {
@@ -1936,7 +2066,6 @@ namespace WinThumbsPreloader
                     catch (Exception ex)
                     {
                         WriteLine("Backup exception: " + ex.Message, LoggingFrequency.GUILogging);
-                        HideProgressBar(progressBar);
 
                         return CacheOperationResult.Fail(
                             IsLikelyPermissionDenied(ex)
@@ -2134,6 +2263,15 @@ namespace WinThumbsPreloader
 
         public void ConfigureDiskCleanupSageset()
         {
+            if (!TryConfigureDiskCleanupSageset(out _))
+            {
+                OutputTextBox.Text = "Failed to configure disk cleanup. Retry as Admin.";
+            }
+        }
+
+        internal static bool TryConfigureDiskCleanupSageset(out string errorMessage)
+        {
+            errorMessage = string.Empty;
             WriteLine("Configuring disk cleanup sageset...", LoggingFrequency.DebugLogging);
             try
             {
@@ -2144,6 +2282,7 @@ namespace WinThumbsPreloader
                         WriteLine("ThumbnailCacheKey: " + ThumbnailCacheKey, LoggingFrequency.DebugLogging);
                         WriteLine("SagesetNumber: " + sagesetNumber, LoggingFrequency.DebugLogging);
                         regKey.SetValue($"StateFlags{sagesetNumber:D4}", 2, RegistryValueKind.DWord);
+                        return true;
                     }
                     else
                     {
@@ -2153,8 +2292,9 @@ namespace WinThumbsPreloader
             }
             catch (Exception e)
             {
+                errorMessage = "Failed to configure disk cleanup. Retry as Admin.";
                 WriteLine("Failed to configure disk cleanup: " + e.Message, LoggingFrequency.GUILogging);
-                OutputTextBox.Text = "Failed to configure disk cleanup. Retry as Admin.";
+                return false;
             }
         }
 
@@ -2262,6 +2402,22 @@ namespace WinThumbsPreloader
 
         public static async Task<Success> RestoreThumbsCache(ProgressBar progressBar, bool forceRestore)
         {
+            if (progressBar == null)
+                return await RestoreThumbsCacheAsync(null, forceRestore);
+
+            var reporter = new ProgressBarReporter(progressBar);
+            try
+            {
+                return await RestoreThumbsCacheAsync(reporter, forceRestore);
+            }
+            finally
+            {
+                await reporter.FinishAndHideAsync();
+            }
+        }
+
+        internal static async Task<Success> RestoreThumbsCacheAsync(IProgress<int> progress, bool forceRestore)
+        {
             return await Task.Run(async () =>
             {
                 WriteLine("Restoring thumbnail cache...", LoggingFrequency.GUILogging);
@@ -2355,7 +2511,7 @@ namespace WinThumbsPreloader
                     int failureCount = 0;
                     int thumbCacheFailureCount = 0;
 
-                    await UpdateProgressBarAsync(progressBar, 0);
+                    progress?.Report(0);
 
                     foreach (string file in orderedBackupFiles)
                     {
@@ -2399,7 +2555,6 @@ namespace WinThumbsPreloader
                             if (!allowPartial || isThumbCacheFile)
                             {
                                 RollbackRestore(explorerPath, rollbackPath, restoredFileNames);
-                                HideProgressBar(progressBar);
 
                                 if (forceRestore)
                                 {
@@ -2413,12 +2568,11 @@ namespace WinThumbsPreloader
                         }
 
                         long currentSize = ExplorerCacheSize();
-                        int progress = (int)((currentSize * 100) / backupSize);
-                        await UpdateProgressBarAsync(progressBar, Math.Min(progress, 100));
+                        int progressPct = (int)((currentSize * 100) / backupSize);
+                        progress?.Report(Math.Clamp(progressPct, 0, 100));
                     }
 
-                    await UpdateProgressBarAsync(progressBar, 100);
-                    HideProgressBar(progressBar);
+                    progress?.Report(100);
 
                     // Restart Explorer
                     if (forceRestore)
@@ -2454,8 +2608,6 @@ namespace WinThumbsPreloader
                     WriteLine("Restore exception: " + ex.Message, LoggingFrequency.GUILogging);
 
                     RollbackRestore(explorerPath, rollbackPath, restoredFileNames);
-
-                    HideProgressBar(progressBar);
 
                     if (forceRestore)
                     {
@@ -2604,7 +2756,7 @@ namespace WinThumbsPreloader
             catch { }
         }
 
-        private static readonly string[] ThumbCacheStreamNames =
+        internal static readonly string[] ThumbCacheStreamNames =
         [
             "16", "32", "48", "96", "256", "768", "1280", "1920", "2560",
             "sr", "wide", "exif", "wide_alternate", "custom_stream"
@@ -3212,17 +3364,32 @@ namespace WinThumbsPreloader
 
         private bool OpenBackupFolder(object sender, EventArgs e)
         {
+            bool ok = TryOpenBackupFolder(out string message);
+            if (!ok && !string.IsNullOrEmpty(message))
+                SetCacheOutput(message);
+            return ok;
+        }
+
+        internal static bool TryOpenBackupFolder(out string message)
+        {
+            message = string.Empty;
             WriteLine("Opening backup folder...", LoggingFrequency.GUILogging);
 
             if (!TryGetBackupPath(out string currentBackupPath))
             {
-                SetCacheOutput("No backup folder selected.");
+                message = "No backup folder selected.";
                 return false;
             }
 
             try
             {
-                // Check if the Explorer backup folder is open and maximize it if it is
+                if (PathSecurity.HasReparsePointOrJunctionInPath(currentBackupPath, rejectAnyLeafOrParentReparsePoint: false) ||
+                    PathSecurity.IsReparsePoint(currentBackupPath))
+                {
+                    message = "Backup folder cannot be or traverse a reparse point.";
+                    return false;
+                }
+
                 var processes = Process.GetProcessesByName("explorer");
 
                 bool backupFolderWindowFound = false;
@@ -3254,7 +3421,6 @@ namespace WinThumbsPreloader
                     }
                 }
 
-                // If not found, start a new instance.
                 if (!backupFolderWindowFound)
                 {
                     if (!Directory.Exists(currentBackupPath))
@@ -3268,13 +3434,13 @@ namespace WinThumbsPreloader
                     });
                 }
 
+                message = "Backup folder opened.";
                 return true;
             }
             catch (Exception ex)
             {
                 WriteLine("Failed to open backup folder: " + ex.Message, LoggingFrequency.GUILogging);
-
-                SetCacheOutput("Failed to open backup folder.");
+                message = "Failed to open backup folder.";
                 return false;
             }
         }
@@ -3288,7 +3454,9 @@ namespace WinThumbsPreloader
                     if (!TryGetBackupPath(out string currentBackupPath))
                         return Success.Failure;
 
-                    if (!Directory.Exists(currentBackupPath))
+                    if (!Directory.Exists(currentBackupPath) ||
+                        PathSecurity.HasReparsePointOrJunctionInPath(currentBackupPath, rejectAnyLeafOrParentReparsePoint: false) ||
+                        PathSecurity.IsReparsePoint(currentBackupPath))
                         return Success.Failure;
 
                     var files = Directory.GetFiles(currentBackupPath, "*.db");
@@ -3296,7 +3464,16 @@ namespace WinThumbsPreloader
 
                     foreach (var file in files)
                     {
-                        try { File.Delete(file); }
+                        try
+                        {
+                            if (PathSecurity.IsReparsePoint(file))
+                            {
+                                failed++;
+                                WriteLine("Refusing to delete reparse-point backup file.", LoggingFrequency.DebugLogging);
+                                continue;
+                            }
+                            File.Delete(file);
+                        }
                         catch (Exception ex)
                         {
                             failed++;
@@ -3378,6 +3555,15 @@ namespace WinThumbsPreloader
 
         private void OpenCacheFolder(object sender, EventArgs e)
         {
+            if (!TryOpenCacheFolder(out string message) && !string.IsNullOrEmpty(message))
+            {
+                OutputTextBox.Text = message;
+            }
+        }
+
+        internal static bool TryOpenCacheFolder(out string message)
+        {
+            message = string.Empty;
             WriteLine("Opening cache folder...", LoggingFrequency.GUILogging);
             var processes = Process.GetProcessesByName("explorer");
 
@@ -3418,8 +3604,8 @@ namespace WinThumbsPreloader
                 if (!Directory.Exists(explorerPath))
                 {
                     WriteLine("Cache folder not found", LoggingFrequency.GUILogging);
-                    OutputTextBox.Text = "Cache folder not found";
-                    return;
+                    message = "Cache folder not found";
+                    return false;
                 }
 
                 try
@@ -3434,9 +3620,13 @@ namespace WinThumbsPreloader
                 catch (Exception ex)
                 {
                     WriteLine("Failed to open cache folder: " + ex.Message, LoggingFrequency.GUILogging);
-                    OutputTextBox.Text = "Failed to open cache folder";
+                    message = "Failed to open cache folder";
+                    return false;
                 }
             }
+
+            message = "Explorer cache opened.";
+            return true;
         }
 
         public static async Task<Success> ClearExplorerCacheAsync()
@@ -3445,7 +3635,9 @@ namespace WinThumbsPreloader
             {
                 try
                 {
-                    if (!Directory.Exists(explorerPath))
+                    if (!Directory.Exists(explorerPath) ||
+                        PathSecurity.HasReparsePointOrJunctionInPath(explorerPath, rejectAnyLeafOrParentReparsePoint: false) ||
+                        PathSecurity.IsReparsePoint(explorerPath))
                         return Success.Failure;
 
                     var files = Directory.GetFiles(explorerPath, "thumbcache_*.db");
@@ -3453,7 +3645,16 @@ namespace WinThumbsPreloader
 
                     foreach (var file in files)
                     {
-                        try { File.Delete(file); }
+                        try
+                        {
+                            if (PathSecurity.IsReparsePoint(file))
+                            {
+                                failed++;
+                                WriteLine("Refusing to delete reparse-point cache file.", LoggingFrequency.DebugLogging);
+                                continue;
+                            }
+                            File.Delete(file);
+                        }
                         catch (Exception ex)
                         {
                             failed++;
@@ -3687,6 +3888,8 @@ namespace WinThumbsPreloader
                         Program.TrayCacheForm.SetTrayIconVisible(false);
                     }
 
+                    Program.TrayHost?.SetVisible(false);
+
                     if (notifyIcon1.Icon == null)
                         notifyIcon1.Icon = Resources.MainIcon;
                 }
@@ -3825,9 +4028,26 @@ namespace WinThumbsPreloader
 
                 try
                 {
-                    Directory.CreateDirectory(backupFolder);
+                    if (PathSecurity.HasReparsePointOrJunctionInPath(backupFolder, rejectAnyLeafOrParentReparsePoint: false) ||
+                        PathSecurity.IsReparsePoint(backupFolder))
+                    {
+                        exception = new IOException("Backup lock refuses reparse-point or junction directories.");
+                        return AcquireResult.InvalidPath;
+                    }
+
+                    DirectoryInfo lockDirInfo = Directory.CreateDirectory(backupFolder);
+                    if ((lockDirInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        exception = new IOException("Backup lock directory cannot be a reparse point.");
+                        return AcquireResult.InvalidPath;
+                    }
 
                     string lockFilePath = Path.Combine(backupFolder, LockFileName);
+                    if (PathSecurity.IsReparsePoint(lockFilePath))
+                    {
+                        exception = new IOException("Backup lock file cannot be a reparse point.");
+                        return AcquireResult.InvalidPath;
+                    }
 
                     _handle = new FileStream(
                         lockFilePath,

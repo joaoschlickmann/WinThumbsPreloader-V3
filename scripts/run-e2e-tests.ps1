@@ -32,6 +32,29 @@ Write-Host "Using .NET SDK: $dotnetExe" -ForegroundColor DarkGray
 
 $slnPath = Join-Path $repoRoot "WinThumbsPreloader\WinThumbsPreloader.sln"
 $workspaceBinPrefix = Join-Path $repoRoot "WinThumbsPreloader\"
+$webUiDir = Join-Path $repoRoot "WebUI"
+
+if (Test-Path (Join-Path $webUiDir "package.json")) {
+    Write-Host "`n[WebUI] Building static assets (Vite)..." -ForegroundColor Yellow
+    Push-Location $webUiDir
+    try {
+        if (-not (Test-Path (Join-Path $webUiDir "node_modules"))) {
+            npm ci
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "WebUI npm ci failed with exit code $LASTEXITCODE."
+                exit $LASTEXITCODE
+            }
+        }
+
+        npm run build
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "WebUI Vite build failed with exit code $LASTEXITCODE."
+            exit $LASTEXITCODE
+        }
+    } finally {
+        Pop-Location
+    }
+}
 
 function Stop-WorkspaceTestProcesses {
     Get-Process -Name "WinThumbsPreloader" -ErrorAction SilentlyContinue | ForEach-Object {
@@ -49,7 +72,7 @@ $testExitCode = 0
 try {
     if ($VisualOnly) {
         Write-Host "`n[1/1] Running Visual and User-Simulation E2E Tests..." -ForegroundColor Yellow
-        & $dotnetExe test $slnPath -c $Configuration --filter "FullyQualifiedName~VisualAndUserSimulationE2ETests" --nologo -v minimal
+        & $dotnetExe test $slnPath -c $Configuration --filter "FullyQualifiedName~VisualAndUserSimulationE2ETests|FullyQualifiedName~WebUiHostAndBridgeTests" --nologo -v minimal
     } else {
         Write-Host "`n[1/2] Running Full Automated Unit, Regression, Integration and Visual E2E Suite..." -ForegroundColor Yellow
         & $dotnetExe test $slnPath -c $Configuration --nologo -v minimal

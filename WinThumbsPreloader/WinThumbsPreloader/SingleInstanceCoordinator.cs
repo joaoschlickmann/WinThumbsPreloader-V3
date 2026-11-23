@@ -15,7 +15,8 @@ namespace WinThumbsPreloader
         ShowMainWindow = 1,
         ReopenSettings = 2,
         ReopenOptimizer = 3,
-        Shutdown = 4
+        Shutdown = 4,
+        ReopenCodecs = 5
     }
 
     internal sealed class SingleInstanceCoordinator : IDisposable
@@ -46,10 +47,12 @@ namespace WinThumbsPreloader
         private EventWaitHandle _activateEvent;
         private EventWaitHandle _reopenSettingsEvent;
         private EventWaitHandle _reopenOptimizerEvent;
+        private EventWaitHandle _reopenCodecsEvent;
         private EventWaitHandle _shutdownEvent;
         private RegisteredWaitHandle _activateWaitReg;
         private RegisteredWaitHandle _reopenSettingsWaitReg;
         private RegisteredWaitHandle _reopenOptimizerWaitReg;
+        private RegisteredWaitHandle _reopenCodecsWaitReg;
         private RegisteredWaitHandle _shutdownWaitReg;
         private bool _disposed;
 
@@ -77,6 +80,7 @@ namespace WinThumbsPreloader
         private static string GetActivateEventName(string scopeId) => $"Local\\{scopeId}_Activate";
         private static string GetReopenSettingsEventName(string scopeId) => $"Local\\{scopeId}_ReopenSettings";
         private static string GetReopenOptimizerEventName(string scopeId) => $"Local\\{scopeId}_ReopenOptimizer";
+        private static string GetReopenCodecsEventName(string scopeId) => $"Local\\{scopeId}_ReopenCodecs";
         private static string GetShutdownEventName(string scopeId) => $"Local\\{scopeId}_Shutdown";
 
         public static string GetEffectiveScopeId(string scopeId = null)
@@ -191,6 +195,8 @@ namespace WinThumbsPreloader
                     kind = SingleInstanceActivationKind.ReopenSettings;
                 else if (options.reopenOptimizer)
                     kind = SingleInstanceActivationKind.ReopenOptimizer;
+                else if (options.reopenCodecs)
+                    kind = SingleInstanceActivationKind.ReopenCodecs;
             }
 
             SignalExistingInstance(kind, scopeId);
@@ -212,6 +218,7 @@ namespace WinThumbsPreloader
             {
                 SingleInstanceActivationKind.ReopenSettings => GetReopenSettingsEventName(scopeId),
                 SingleInstanceActivationKind.ReopenOptimizer => GetReopenOptimizerEventName(scopeId),
+                SingleInstanceActivationKind.ReopenCodecs => GetReopenCodecsEventName(scopeId),
                 SingleInstanceActivationKind.Shutdown => GetShutdownEventName(scopeId),
                 _ => GetActivateEventName(scopeId)
             };
@@ -280,6 +287,7 @@ namespace WinThumbsPreloader
                 _activateEvent = CreateOrOpenPermissiveEvent(GetActivateEventName(_scopeId));
                 _reopenSettingsEvent = CreateOrOpenPermissiveEvent(GetReopenSettingsEventName(_scopeId));
                 _reopenOptimizerEvent = CreateOrOpenPermissiveEvent(GetReopenOptimizerEventName(_scopeId));
+                _reopenCodecsEvent = CreateOrOpenPermissiveEvent(GetReopenCodecsEventName(_scopeId));
                 _shutdownEvent = CreateOrOpenPermissiveEvent(GetShutdownEventName(_scopeId));
 
                 _activateWaitReg = ThreadPool.RegisterWaitForSingleObject(
@@ -310,6 +318,17 @@ namespace WinThumbsPreloader
                     {
                         if (!timedOut && !_disposed)
                             _onActivate?.Invoke(SingleInstanceActivationKind.ReopenOptimizer);
+                    },
+                    null,
+                    Timeout.Infinite,
+                    executeOnlyOnce: false);
+
+                _reopenCodecsWaitReg = ThreadPool.RegisterWaitForSingleObject(
+                    _reopenCodecsEvent,
+                    (_, timedOut) =>
+                    {
+                        if (!timedOut && !_disposed)
+                            _onActivate?.Invoke(SingleInstanceActivationKind.ReopenCodecs);
                     },
                     null,
                     Timeout.Infinite,
@@ -401,21 +420,25 @@ namespace WinThumbsPreloader
             try { _activateWaitReg?.Unregister(null); } catch { }
             try { _reopenSettingsWaitReg?.Unregister(null); } catch { }
             try { _reopenOptimizerWaitReg?.Unregister(null); } catch { }
+            try { _reopenCodecsWaitReg?.Unregister(null); } catch { }
             try { _shutdownWaitReg?.Unregister(null); } catch { }
 
             _activateWaitReg = null;
             _reopenSettingsWaitReg = null;
             _reopenOptimizerWaitReg = null;
+            _reopenCodecsWaitReg = null;
             _shutdownWaitReg = null;
 
             try { _activateEvent?.Dispose(); } catch { }
             try { _reopenSettingsEvent?.Dispose(); } catch { }
             try { _reopenOptimizerEvent?.Dispose(); } catch { }
+            try { _reopenCodecsEvent?.Dispose(); } catch { }
             try { _shutdownEvent?.Dispose(); } catch { }
 
             _activateEvent = null;
             _reopenSettingsEvent = null;
             _reopenOptimizerEvent = null;
+            _reopenCodecsEvent = null;
             _shutdownEvent = null;
 
             lock (LocalScopesLock)

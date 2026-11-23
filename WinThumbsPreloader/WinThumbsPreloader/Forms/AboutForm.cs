@@ -431,6 +431,39 @@ namespace WinThumbsPreloader
 
         public static async Task CheckForCacheReset(bool checkResetRecognized, bool logOnly)
         {
+            var outcome = await DetectCacheResetCoreAsync(checkResetRecognized, autoRestore: false, logOnly: logOnly);
+            if (!outcome.Detected || logOnly || !outcome.TriggeredAlert)
+                return;
+
+            DialogResult dialogResult = MessageBox.Show(
+                "The Explorer cache has reset. Would you like to restore the backup?",
+                "Restore Backup",
+                MessageBoxButtons.YesNo);
+
+            if (dialogResult == DialogResult.Yes)
+            {
+                CacheForm.Success restoreResult = await CacheForm.RestoreThumbsCache(null, true);
+                if (restoreResult != CacheForm.Success.Failure && CacheForm.CompareThumbsCacheSize())
+                {
+                    Settings.Default.ResetRecognized = false;
+                    Settings.Default.Save();
+                    ResetCacheResetFlags();
+                    WriteLine("Explorer cache successfully restored", LoggingFrequency.DebugLogging);
+                    MessageBox.Show("Explorer cache successfully restored.", "Restore Successful", MessageBoxButtons.OK);
+                }
+                else
+                {
+                    WriteLine("Failed to restore Explorer cache", LoggingFrequency.DebugLogging);
+                    MessageBox.Show("Failed to restore Explorer cache.", "Restore Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        internal static async Task<(bool Detected, bool TriggeredAlert, bool Restored, bool RestoreSucceeded)> DetectCacheResetCoreAsync(
+            bool checkResetRecognized,
+            bool autoRestore,
+            bool logOnly = false)
+        {
             if (checkResetRecognized && Settings.Default.ResetRecognized)
             {
                 if (!recognizedLogged)
@@ -438,14 +471,14 @@ namespace WinThumbsPreloader
                     WriteLine("Cache reset already recognized, skipping check", LoggingFrequency.DebugLogging);
                     recognizedLogged = true;
                 }
-                return;
+                return (false, false, false, false);
             }
 
             if (CacheBackupLock.IsHeldByThisProcess)
-                return;
+                return (false, false, false, false);
 
             if (System.Threading.Interlocked.CompareExchange(ref _cacheResetCheckInProgress, 1, 0) != 0)
-                return;
+                return (false, false, false, false);
 
             try
             {
@@ -453,7 +486,7 @@ namespace WinThumbsPreloader
                     Settings.Default.ThumbsResetAlert && !CacheForm.CompareThumbsCacheSize());
 
                 if (!isReset)
-                    return;
+                    return (false, false, false, false);
 
                 if (!cacheResetLogged)
                 {
@@ -461,38 +494,34 @@ namespace WinThumbsPreloader
                     cacheResetLogged = true;
                 }
 
-                if (!logOnly && !Settings.Default.ResetRecognized)
+                if (logOnly || Settings.Default.ResetRecognized)
+                    return (true, false, false, false);
+
+                if (checkResetRecognized)
                 {
-                    if (checkResetRecognized)
-                    {
-                        Settings.Default.ResetRecognized = true;
-                        Settings.Default.Save();
-                        WriteLine("cacheResetRecognized set to true", LoggingFrequency.DebugLogging);
-                    }
-
-                    DialogResult dialogResult = MessageBox.Show(
-                        "The Explorer cache has reset. Would you like to restore the backup?",
-                        "Restore Backup",
-                        MessageBoxButtons.YesNo);
-
-                    if (dialogResult == DialogResult.Yes)
-                    {
-                        CacheForm.Success restoreResult = await CacheForm.RestoreThumbsCache(null, true);
-                        if (restoreResult != CacheForm.Success.Failure && CacheForm.CompareThumbsCacheSize())
-                        {
-                            Settings.Default.ResetRecognized = false;
-                            Settings.Default.Save();
-                            ResetCacheResetFlags();
-                            WriteLine("Explorer cache successfully restored", LoggingFrequency.DebugLogging);
-                            MessageBox.Show("Explorer cache successfully restored.", "Restore Successful", MessageBoxButtons.OK);
-                        }
-                        else
-                        {
-                            WriteLine("Failed to restore Explorer cache", LoggingFrequency.DebugLogging);
-                            MessageBox.Show("Failed to restore Explorer cache.", "Restore Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        }
-                    }
+                    Settings.Default.ResetRecognized = true;
+                    Settings.Default.Save();
+                    WriteLine("cacheResetRecognized set to true", LoggingFrequency.DebugLogging);
                 }
+
+                if (!autoRestore)
+                    return (true, true, false, false);
+
+                CacheForm.Success restoreResult = await CacheForm.RestoreThumbsCacheAsync(null, forceRestore: true);
+                bool restoredOk = restoreResult != CacheForm.Success.Failure && CacheForm.CompareThumbsCacheSize();
+                if (restoredOk)
+                {
+                    Settings.Default.ResetRecognized = false;
+                    Settings.Default.Save();
+                    ResetCacheResetFlags();
+                    WriteLine("Explorer cache successfully restored", LoggingFrequency.DebugLogging);
+                }
+                else
+                {
+                    WriteLine("Failed to restore Explorer cache", LoggingFrequency.DebugLogging);
+                }
+
+                return (true, true, true, restoredOk);
             }
             finally
             {

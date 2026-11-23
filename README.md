@@ -57,6 +57,7 @@ Building upon the foundation of **v1** (core preloading and Explorer context men
 - **Shared-ReadWrite Live Backup & Restore**: Uses `FileShare.ReadWrite | FileShare.Delete` streams and orders `thumbcache_*.db` writes prior to `thumbcache_idx.db`, enabling reliable backups and restores even when `explorer.exe`, `dllhost.exe`, or third-party File Open/Save dialogs hold open handles to cache files.
 - **Smart Bucket Spillover & `WTS_SLOWRECLAIM` Retention**: Requests `WTS_SLOWRECLAIM` to populate `thumbcache_sr.db` alongside standard streams and automatically spills over to the next unsaturated Windows cache bucket (`256 → 768 → 1280 → 1920 → 2560`) when a single `.db` file reaches the 1.6 GB soft ceiling.
 - **Elevated Mapped-Drive & UNC Resolver**: Resolves mapped network drive letters (`Z:\`, etc.) across UAC elevation boundaries via `WNetGetUniversalNameW` and `HKCU\Network` so scheduled or elevated tasks work seamlessly on NAS/SMB shares.
+- **Unified WebView2 UI ("Polished Obsidian / Liquid Light")**: Provides a single-window React + WebView2 desktop shell (`MainShellForm`) with Light (*Liquid Light*), Dark (*Polished Obsidian*), and System themes, accessible modal dialogs and controls, native drag-and-drop folder queueing, and automatic classic WinForms fallback if the WebView2 Runtime is unavailable.
 - **Automated Test Suite**: Includes a 133-test xUnit suite (`WinThumbsPreloader.Tests`) plus 7 Rust native COM/decoder tests (`WinThumbsCodecs`) covering STA COM concurrency, binary `CMMM`/`IMMM` sanitization, cross-process backup locks, bucket spillover, all 10 built-in codec decoders, security hardening, and visual E2E GUI flows.
 
 ---
@@ -128,13 +129,12 @@ Right-click any **Folder**, **Folder Background**, or **Drive** in Windows Explo
 - **Preload thumbnails recursively**: Preloads thumbnails for the selected directory and all nested subdirectories (`-m -r "%V"`).
 
 ### Graphical Interface (GUI)
-Launching `WinThumbsPreloader.exe` without path arguments opens the main dashboard:
-- **About / Main Window**: Quick access to **Preload** (hold `Shift` for *Recursively*, or `Ctrl` for *Bulk Preload*), **Cache**, **Schedule**, and **Settings**.
-- **Cache Form**:
-  - View live **Explorer Cache Size** and **Backup Size**.
-  - Enable **Auto Backup**, **Auto Restore**, **Cache Reset Alert**, and **Start with Windows**.
-  - Hold `Shift` in the Cache window to switch buttons to **Force Restore** (closes Explorer and `thumbcache.dll` COM surrogates before restoring), **Clear Backup**, **Clear Cache**, and **Exit**.
-  - Open **Advanced** to configure backup folder location, update intervals, deletion methods, and safety modes.
+Launching `WinThumbsPreloader.exe` without path arguments opens the unified WebView2 dashboard (**Polished Obsidian** / **Liquid Light**):
+- **Unified Single-Window Navigation (No `Shift`/`Ctrl` Modifiers Required)**: Switch directly between **Preload**, **Cache**, **Schedule**, **Codecs**, **Optimize**, and **Settings** in the top navigation bar without hidden `Shift` or `Ctrl` modifier shortcuts.
+- **Themes & Accessible Controls**: Choose **Light** (*Liquid Light*), **Dark** (*Polished Obsidian*), or **System** theme in **Settings → General**. Destructive confirmations (**Force Restore (Restart Explorer)**, **Clear Backup**, **Clear Cache**, **Reset Defaults**) and prompts use accessible modal dialogs with keyboard focus management and live-region status announcements.
+- **Preload View**: Drag and drop folders or add paths directly, toggle **Recursive** and **Multithreaded** explicitly, run **Sequential** or **Simultaneous** batches, and save/load presets.
+- **Cache View**: View live **Explorer Cache Size**, per-bucket sizes, and **Backup Size**; toggle **Auto Backup**, **Auto Restore**, **Cache Reset Alert**, and **Start with Windows**; trigger **Force Restore (Restart Explorer)**, **Clear Backup**, or **Clear Cache** directly from dedicated buttons; and configure backup folder location, update intervals, deletion methods, and safety modes.
+- **Automatic Classic WinForms Fallback**: If Microsoft Edge WebView2 Runtime is unavailable (or `wwwroot/` assets are absent), WinThumbsPreloader automatically falls back to the classic WinForms dialogs (`AboutForm`, `CacheForm`, `BulkPreloaderForm`, `ScheduleForm`, `CodecsForm`, `WindowsOptimizerForm`, `SettingsForm`), where holding `Shift` (`Recursively` / `Force Restore` / `Clear Backup` / `Clear Cache` / `Exit`) or `Ctrl` (`Bulk Preload`) still works.
 
 ### Command-Line Interface (CLI)
 
@@ -150,7 +150,9 @@ WinThumbsPreloader [options] <path1> [path2 ...]
 | `-m:<n>` or `-m<n>` | **Multi-threaded (Custom)**: Enable multi-threaded extraction with `<n>` worker threads (`1`–`256`, e.g., `-m:16` or `-m16`). |
 | `-maxinstances:<n>` or `-p:<n>` | Limit the maximum number of paths processed concurrently when multiple paths are passed (`1`–`32`). |
 | `-startminimized` | Launch the Cache Manager minimized to the Windows system tray. |
-| `-reopencodecs` | Focus the running GUI instance and open the **Built-in Codecs** manager. |
+| `-reopensettings` | Focus the running GUI instance on **Settings** (WebView2 shell view, or classic `SettingsForm` in fallback mode). |
+| `-reopenoptimizer` | Focus the running GUI instance on **Optimize** (WebView2 shell view, or classic `WindowsOptimizerForm` in fallback mode). |
+| `-reopencodecs` | Focus the running GUI instance on **Codecs** (WebView2 shell view, or classic `CodecsForm` in fallback mode). |
 | `-apply-codecs -codecs-mask:0x...` | Register/update the selected built-in thumbnail codec families (`0x000`–`0x3FF`). |
 | `-uninstall-codecs` | Uninstall all built-in codecs and restore backed-up external handlers. |
 
@@ -179,21 +181,28 @@ WinThumbsPreloader includes built-in open-source thumbnail codecs (via the **Cod
 
 ### Prerequisites
 - **.NET 10.0 SDK** (`net10.0-windows7.0`)
+- **Node.js 22+ / 24+** (with `npm`, to build and test the `WebUI/` React frontend into `wwwroot/`)
 - **Rust (`>= 1.95`, `x86_64-pc-windows-msvc`)** with MSVC C++ Build Tools (to compile `WinThumbsCodecs.dll`)
-- **Windows 10 / 11 (x64)**
+- **Windows 10 / 11 (x64)** (with Microsoft Edge WebView2 Runtime for the modern shell; classic WinForms fallback works if absent)
 - **Inno Setup 6** (optional, required only to compile the `.exe` setup installer)
 
 ### Build & Test Commands
 
 ```powershell
-# Step 1: Build & verify native COM thumbnail codecs (x64)
+# Step 1: Build embedded WebUI static assets (outputs to WinThumbsPreloader/WinThumbsPreloader/wwwroot/)
+cd WebUI && npm ci && npm run build
+cd ..
+# Optional frontend typecheck, unit/accessibility tests, and audit (run inside WebUI/):
+# npm run typecheck && npm test && npm audit --audit-level=moderate
+
+# Step 2: Build & verify native COM thumbnail codecs (x64)
 # Fetch/verify PDFium, run Rust codec tests, and build Release WinThumbsCodecs payload into bin/Release/.../Codecs/
 .\scripts\build-codecs.ps1 -Configuration Release -RunTests -CopyToOutput
 
 # Restore (locked), build, and run all automated C# unit, integration, security, and visual E2E tests
 dotnet test "WinThumbsPreloader\WinThumbsPreloader.sln" --locked-mode
 
-# Step 2: Build Release win-x64 binaries & re-stage Codecs payload
+# Step 3: Build Release win-x64 binaries & re-stage Codecs payload
 # Stage Codecs payload cleanly alongside Release binaries (requires Rust >= 1.95 on first run)
 dotnet build "WinThumbsPreloader\WinThumbsPreloader.csproj" -c Release -r win-x64 --no-self-contained
 .\scripts\build-codecs.ps1 -Configuration Release -SkipPdfiumDownload -CopyToOutput
