@@ -487,5 +487,46 @@ namespace WinThumbsPreloader.Tests
             Assert.DoesNotContain("Microsoft.DotNet.ILCompiler", appLockFile, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Microsoft.NET.ILLink.Tasks", testLockFile, StringComparison.OrdinalIgnoreCase);
         }
+
+        [Fact]
+        public void BuildWorkflowAndCodecScript_EnforcePinnedRustBuildLockedCargoAndPdfiumSha256()
+        {
+            string repoRoot = FindRepoRoot();
+            string workflowContent = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "build-and-release.yml"));
+            string buildCodecsScript = File.ReadAllText(Path.Combine(repoRoot, "scripts", "build-codecs.ps1"));
+            string cargoToml = File.ReadAllText(Path.Combine(repoRoot, "WinThumbsCodecs", "Cargo.toml"));
+            string codecManagerCs = File.ReadAllText(Path.Combine(repoRoot, "WinThumbsPreloader", "WinThumbsPreloader", "CodecManager.cs"));
+
+            // CI workflow builds & tests native codecs with pinned actions and built-in rustup
+            Assert.Contains("rustup toolchain install", workflowContent, StringComparison.Ordinal);
+            Assert.Contains("build-codecs.ps1", workflowContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("-RunTests", workflowContent, StringComparison.Ordinal);
+            Assert.Contains("-CopyToOutput", workflowContent, StringComparison.Ordinal);
+
+            MatchCollection usesMatches = Regex.Matches(workflowContent, @"^\s*(?:-\s*)?uses:\s*([^\s#]+)", RegexOptions.Multiline);
+            Assert.NotEmpty(usesMatches);
+            foreach (Match usesMatch in usesMatches)
+            {
+                string actionRef = usesMatch.Groups[1].Value;
+                Assert.Matches(@"@[0-9a-f]{40}$", actionRef);
+            }
+
+            // Codec build script locks Cargo dependencies and verifies PDFium binary SHA-256
+            Assert.Contains("--locked", buildCodecsScript, StringComparison.Ordinal);
+            Assert.Contains("Assert-Sha256", buildCodecsScript, StringComparison.Ordinal);
+            Assert.Matches(@"\$pdfiumExpectedSha256\s*=\s*""[0-9a-f]{64}""", buildCodecsScript);
+
+            // Cargo features forbid filesystem "paths" in craft-eps and keep "cr2" active in craft-raw
+            Match craftEpsLine = Regex.Match(cargoToml, @"^craft-eps\s*=.*$", RegexOptions.Multiline);
+            Assert.True(craftEpsLine.Success);
+            Assert.DoesNotContain("\"paths\"", craftEpsLine.Value, StringComparison.Ordinal);
+
+            Match craftRawLine = Regex.Match(cargoToml, @"^craft-raw\s*=.*$", RegexOptions.Multiline);
+            Assert.True(craftRawLine.Success);
+            Assert.Contains("\"cr2\"", craftRawLine.Value, StringComparison.Ordinal);
+
+            // Shell COM registration must stay out-of-process in dllhost.exe (never write DisableProcessIsolation)
+            Assert.DoesNotMatch(new Regex(@"SetValue\s*\(\s*""DisableProcessIsolation""", RegexOptions.IgnoreCase), codecManagerCs);
+        }
     }
 }

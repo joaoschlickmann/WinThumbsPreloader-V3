@@ -57,9 +57,12 @@ namespace WinThumbsPreloader.Tests
                 Assert.True(new Options(["-startminimized"]).IsGuiLaunch);
                 Assert.True(new Options(["-reopensettings"]).IsGuiLaunch);
                 Assert.True(new Options(["-reopenoptimizer"]).IsGuiLaunch);
+                Assert.True(new Options(["-reopencodecs"]).IsGuiLaunch);
 
                 Assert.False(new Options(["-apply-optimizations"]).IsGuiLaunch);
                 Assert.False(new Options(["-restore-defaults"]).IsGuiLaunch);
+                Assert.False(new Options(["-apply-codecs", "-codecs-mask:0x001"]).IsGuiLaunch);
+                Assert.False(new Options(["-uninstall-codecs"]).IsGuiLaunch);
                 Assert.False(new Options(["-shutdown"]).IsGuiLaunch);
                 Assert.False(new Options(["-m", tempDir]).IsGuiLaunch);
             }
@@ -232,6 +235,13 @@ namespace WinThumbsPreloader.Tests
             Assert.DoesNotContain("Exec(AppExe, '-shutdown'", issContent, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("{localappdata}\\Programs\\{#MyAppName}", issContent, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("{userprograms}\\{#MyAppName}.lnk", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("WinThumbsCodecs.dll", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("pdfium.dll", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("PDFIUM-LICENSE.txt", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(@"{app}\Codecs", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("restartreplace uninsrestartdelete", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("[UninstallRun]", issContent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("-uninstall-codecs", issContent, StringComparison.OrdinalIgnoreCase);
 
             var unknownFlagOptions = new Options(["-future-unknown-flag"]);
             Assert.True(unknownFlagOptions.unknownFlagProvided);

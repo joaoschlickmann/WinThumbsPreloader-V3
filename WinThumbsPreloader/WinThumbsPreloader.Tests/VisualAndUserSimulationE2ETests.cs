@@ -195,6 +195,11 @@ namespace WinThumbsPreloader.Tests
                     Assert.True(optBtn[0].Visible);
                     Assert.Equal("Optimize OS", optBtn[0].Text);
 
+                    Control[] codecsBtn = aboutForm.Controls.Find("CodecsButton", searchAllChildren: true);
+                    Assert.Single(codecsBtn);
+                    Assert.True(codecsBtn[0].Visible);
+                    Assert.Equal("Codecs", codecsBtn[0].Text);
+
                     CaptureFormScreenshot(aboutForm, "01_AboutForm.png");
                     AssertNoSiblingButtonsOrCheckBoxesOverlap(aboutForm, layoutViolations);
                     aboutForm.Hide();
@@ -212,6 +217,11 @@ namespace WinThumbsPreloader.Tests
                     Assert.Single(optBtn);
                     Assert.True(optBtn[0].Visible);
                     Assert.Equal("Optimize OS", optBtn[0].Text);
+
+                    Control[] codecsBtn = settingsForm.Controls.Find("CodecsButton", searchAllChildren: true);
+                    Assert.Single(codecsBtn);
+                    Assert.True(codecsBtn[0].Visible);
+                    Assert.Equal("Codecs", codecsBtn[0].Text);
 
                     CaptureFormScreenshot(settingsForm, "02_SettingsForm.png");
                     AssertNoSiblingButtonsOrCheckBoxesOverlap(settingsForm, layoutViolations);
@@ -238,6 +248,11 @@ namespace WinThumbsPreloader.Tests
                         .Cast<ToolStripItem>()
                         .Any(item => string.Equals(item.Text, "Windows Optimizer...", StringComparison.Ordinal));
                     Assert.True(hasTrayOptimizerItem, "System tray menu must contain 'Windows Optimizer...'");
+
+                    bool hasTrayCodecsItem = trayMenu!.Items
+                        .Cast<ToolStripItem>()
+                        .Any(item => string.Equals(item.Text, "Thumbnail Codecs...", StringComparison.Ordinal));
+                    Assert.True(hasTrayCodecsItem, "System tray menu must contain 'Thumbnail Codecs...'");
 
                     CaptureFormScreenshot(cacheForm, "03_CacheForm.png");
                     AssertNoSiblingButtonsOrCheckBoxesOverlap(cacheForm, layoutViolations);
@@ -330,6 +345,29 @@ namespace WinThumbsPreloader.Tests
                     CaptureFormScreenshot(scheduleForm, "10_ScheduleForm.png");
                     AssertNoSiblingButtonsOrCheckBoxesOverlap(scheduleForm, layoutViolations);
                     scheduleForm.Hide();
+                }
+
+                // 13. CodecsForm (isolated registry hive so host codecs are untouched)
+                string codecsVisualRegRoot = $@"Software\WinThumbsPreloader_VisualCodecs_{Guid.NewGuid():N}";
+                try
+                {
+                    var codecsVisualScope = WindowsOptimizer.RegistryHiveScope.CreateIsolatedForTesting(
+                        Microsoft.Win32.Registry.CurrentUser,
+                        codecsVisualRegRoot,
+                        simulateMachineWritable: true);
+
+                    using var codecsForm = new CodecsForm(codecsVisualScope);
+                    codecsForm.StartPosition = FormStartPosition.Manual;
+                    codecsForm.Location = new Point(100, 100);
+                    codecsForm.Show();
+                    Application.DoEvents();
+                    CaptureFormScreenshot(codecsForm, "13_CodecsForm.png");
+                    AssertNoSiblingButtonsOrCheckBoxesOverlap(codecsForm, layoutViolations);
+                    codecsForm.Hide();
+                }
+                finally
+                {
+                    Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(codecsVisualRegRoot, throwOnMissingSubKey: false);
                 }
 
                 Assert.Empty(layoutViolations);
