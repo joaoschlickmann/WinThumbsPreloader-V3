@@ -22,6 +22,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { bridge } from '../lib/bridge';
+import { resolveDroppedPreloadPaths } from '../lib/dropPaths';
 import type {
   BulkPreset,
   PreloadPathValidationItem,
@@ -44,35 +45,6 @@ export interface PreloadViewProps {
       | ((prev: PreloadPathValidationItem[]) => PreloadPathValidationItem[])
   ) => void;
   onNotify: (tone: 'info' | 'warning' | 'error', message: string) => void;
-}
-
-function getFileDropPaths(files: File[]): string[] {
-  return files
-    .map((f) => {
-      const withPath = f as File & { path?: string };
-      return withPath.path ?? '';
-    })
-    .filter((p) => Boolean(p && p.trim()));
-}
-
-function normalizeDropTextLine(raw: string): string {
-  const lower = raw.toLowerCase();
-  if (lower.startsWith('file:///')) {
-    try {
-      return decodeURIComponent(raw.slice(8)).replace(/\//g, '\\');
-    } catch {
-      return raw;
-    }
-  }
-  if (lower.startsWith('file://')) {
-    try {
-      const decoded = decodeURIComponent(raw.slice(7)).replace(/\//g, '\\');
-      return `\\\\${decoded.replace(/^\\+/, '')}`;
-    } catch {
-      return raw;
-    }
-  }
-  return raw;
 }
 
 export function PreloadView({
@@ -208,23 +180,10 @@ export function PreloadView({
     dragDepthRef.current = 0;
     setDragging(false);
 
-    const droppedFiles = Array.from(event.dataTransfer?.files ?? []);
-    const plainText = event.dataTransfer?.getData('text/plain') ?? '';
-    const uriList = event.dataTransfer?.getData('text/uri-list') ?? '';
-
-    const textLines = `${plainText}\n${uriList}`
-      .split(/[\r\n]+/)
-      .map((s) => s.trim())
-      .filter((s) => Boolean(s) && !s.startsWith('#'))
-      .map(normalizeDropTextLine);
-
     try {
-      const resolved = await bridge.resolveDrop(
-        textLines.length > 0 ? textLines : getFileDropPaths(droppedFiles),
-        droppedFiles
-      );
-      if (resolved.items.length > 0) {
-        mergeValidatedItems(resolved.items);
+      const items = await resolveDroppedPreloadPaths(event.dataTransfer);
+      if (items.length > 0) {
+        mergeValidatedItems(items);
       }
     } catch (err) {
       onNotify(
@@ -415,9 +374,25 @@ export function PreloadView({
             thumbnails ahead of browsing.
           </p>
         </div>
-        <StatusPill tone={validCount > 0 ? 'active' : 'neutral'}>
-          {queue.length} Staged ({validCount} Valid)
-        </StatusPill>
+        <div className="ds-primary-actions">
+          <StatusPill tone={validCount > 0 ? 'ok' : 'neutral'}>
+            {queue.length} Staged ({validCount} Valid)
+          </StatusPill>
+          <Button variant="secondary" onClick={handlePickFolders}>
+            <FolderPlus size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Add Folder</span>
+          </Button>
+          <Button
+            variant="primary"
+            disabled={queue.length === 0}
+            loading={starting}
+            loadingLabel="Launching..."
+            onClick={() => executeStart(false)}
+          >
+            <Play size={15} strokeWidth={2} aria-hidden="true" />
+            <span>Start Preloading</span>
+          </Button>
+        </div>
       </div>
 
       {launchWarning && (
@@ -483,30 +458,15 @@ export function PreloadView({
           <GlassPanel
             title="Staged Paths"
             actions={
-              <>
-                <Button variant="secondary" size="sm" onClick={handlePickFolders}>
-                  <FolderPlus size={14} strokeWidth={2} aria-hidden="true" />
-                  <span>Add Folder</span>
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleExportPaths}
-                  disabled={queue.length === 0}
-                >
-                  <FileDown size={14} strokeWidth={2} aria-hidden="true" />
-                  <span>Export Paths (.txt)</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleClearQueue}
-                  disabled={queue.length === 0}
-                >
-                  <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-                  <span>Clear All</span>
-                </Button>
-              </>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExportPaths}
+                disabled={queue.length === 0}
+              >
+                <FileDown size={14} strokeWidth={2} aria-hidden="true" />
+                <span>Export Paths (.txt)</span>
+              </Button>
             }
           >
             <form onSubmit={handleManualAdd} className="ds-row">
@@ -692,23 +652,6 @@ export function PreloadView({
                 </div>
               )}
             </div>
-
-            <div className="ds-row-between">
-              <span className="ds-hint">
-                Launches WinThumbsPreloader with your configured concurrency
-                and path queue.
-              </span>
-              <Button
-                variant="primary"
-                disabled={queue.length === 0}
-                loading={starting}
-                loadingLabel="Launching..."
-                onClick={() => executeStart(false)}
-              >
-                <Play size={15} strokeWidth={2} aria-hidden="true" />
-                <span>Start Preloading</span>
-              </Button>
-            </div>
           </GlassPanel>
         </div>
 
@@ -813,6 +756,24 @@ export function PreloadView({
           )}
         </GlassPanel>
       </div>
+
+      <section className="ds-danger-zone" aria-label="Queue cleanup">
+        <div className="ds-danger-zone-meta">
+          <h2 className="ds-danger-zone-title">Queue Cleanup</h2>
+          <p className="ds-hint">
+            Clear all staged folders from the current batch queue without removing saved presets.
+          </p>
+        </div>
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={handleClearQueue}
+          disabled={queue.length === 0}
+        >
+          <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+          <span>Clear All</span>
+        </Button>
+      </section>
 
       <ConfirmDialog
         open={Boolean(confirmPartialRun)}

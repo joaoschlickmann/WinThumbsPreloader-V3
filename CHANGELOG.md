@@ -4,6 +4,21 @@ All notable changes to **WinThumbsPreloader** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-11-23
+
+### Added
+- **Option A Grouped Left Sidebar Workspace (`WebUI`)**: Replaced the floating top bar and footer chrome with a persistent 236px left `.ds-sidebar` (`WORKSPACE`, `SYSTEM`, `PREFERENCES` navigation groups), pinned `.ds-sidebar-health` cache status indicator, utility strip (`Theme`, `Minimize`, `Quit`), and responsive drawer/mobile breakpoints (`<= 860px` / `<= 599px`).
+- **System Overview Cockpit (`OverviewView`)**: Set `"overview"` as the default landing view (`MainShellForm.NormalizeViewName`, `WebBridge`) with cache health metrics, native drag-and-drop folder queueing, and quick navigation cards across subsystems.
+- **About & Updates Credits and Project Links (`AboutTab`)**: Added a copyable GitHub repository URL box, `GitHub Repository` and `View Releases` quick actions, and a `Credits & GitHub Projects` panel acknowledging predecessor repositories (`WinThumbsPreloader` and `WinThumbsPreloader-V2`), alongside `CLI Reference` and `MIT License` panels.
+
+### Changed
+- **Spatial Zone Separation Across Views**: Reorganized `PreloadView`, `CacheView`, `ScheduleView`, `CodecsView`, `OptimizeView`, and Settings tabs (`GeneralTab`, `ExtensionsTab`, `LoggingTab`) into explicit primary action zones and isolated bottom `.ds-danger-zone` blocks, removing hidden overflow `"..."` menus.
+- **Semantic Status & Surface Tokens**: Extended `tokens.css`, `components.css`, and `StatusPill` with dedicated `--ds-ok*` and `--ds-danger-zone-*` design tokens for Dark (*Polished Obsidian*) and Light (*Liquid Light*) themes.
+
+### Security & Testing
+- **External URL Allowlisting (`UpdateService`)**: Added exact-match allowlist validation in `IsAllowedExternalUrl` for trusted credit repository URLs alongside project and release URLs.
+- **Expanded Verification Coverage**: Updated Vitest + `vitest-axe` accessibility test suites and extended `WebUiHostAndBridgeTests` to capture all 7 WebView2 views (`overview`, `preload`, `cache`, `schedule`, `codecs`, `optimizer`, `settings`) and verify trusted external credit URLs.
+
 ## [3.3.0] - 2026-11-22
 
 ### Added

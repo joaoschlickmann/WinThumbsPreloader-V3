@@ -53,10 +53,47 @@ describe('Shell, Core Views & Theme Accessibility', () => {
     setThemeAttribute('dark');
   });
 
+  it('launches on Option A Overview cockpit, toggles sidebar theme, navigates to Preload, and passes axe in dark & light themes', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    expect(
+      await screen.findByRole('heading', { name: /System Overview/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /Explorer Thumbnail Cache/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /Backup Mirror Snapshot/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Open Cache Manager/i })).toBeInTheDocument();
+
+    expect(await axe(container)).toHaveNoViolations();
+
+    // Quick theme toggle inside sidebar footer switches dark -> light -> dark
+    const toggleToLight = screen.getByRole('button', {
+      name: /Switch to Light Theme/i,
+    });
+    await user.click(toggleToLight);
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(await axe(container)).toHaveNoViolations();
+
+    await user.click(
+      screen.getByRole('button', { name: /Switch to Dark Theme/i })
+    );
+    expect(document.documentElement.dataset.theme).toBe('dark');
+
+    await user.click(screen.getByRole('button', { name: /Quick Preload/i }));
+    expect(
+      await screen.findByRole('heading', { name: /Preload & Batch Queue/i })
+    ).toBeInTheDocument();
+  });
+
   it('exercises PreloadView dropzone, manual paths, invalid confirmation, and presets with 0 axe violations', async () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
 
+    await user.click(screen.getByRole('button', { name: /^Preload$/i }));
     expect(
       await screen.findByRole('heading', { name: /Preload & Batch Queue/i })
     ).toBeInTheDocument();
@@ -225,13 +262,13 @@ describe('Shell, Core Views & Theme Accessibility', () => {
       act(() => {
         dispatchSyntheticBridgeEvent('update:available', {
           state: 'UpdateAvailable',
-          currentVersion: '3.3.0',
-          latestVersion: '3.4.0',
-          releaseTag: 'v3.4.0',
+          currentVersion: '3.4.0',
+          latestVersion: '3.5.0',
+          releaseTag: 'v3.5.0',
           releasePageUrl:
-            'https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases/tag/v3.4.0',
+            'https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases/tag/v3.5.0',
           hasInstallerAsset: true,
-          installerFileName: 'WinThumbsPreloader-Setup-3.4.0.exe',
+          installerFileName: 'WinThumbsPreloader-Setup-3.5.0.exe',
           installerSize: 15_728_640,
           isUpdateAvailable: true,
         });
@@ -245,7 +282,7 @@ describe('Shell, Core Views & Theme Accessibility', () => {
       expect(
         await screen.findByRole('heading', { name: /Application Update/i })
       ).toBeInTheDocument();
-      expect(screen.getByText('v3.4.0')).toBeInTheDocument();
+      expect(screen.getByText('v3.5.0')).toBeInTheDocument();
       expect(await axe(container)).toHaveNoViolations();
 
       await user.click(screen.getByRole('button', { name: /^Dismiss$/i }));
@@ -262,6 +299,7 @@ describe('Shell, Core Views & Theme Accessibility', () => {
     render(<App />);
 
     // Stage a path in PreloadView, switch to Settings, and return -> queue must stay intact
+    await user.click(screen.getByRole('button', { name: /^Preload$/i }));
     expect(
       await screen.findByRole('heading', { name: /Preload & Batch Queue/i })
     ).toBeInTheDocument();

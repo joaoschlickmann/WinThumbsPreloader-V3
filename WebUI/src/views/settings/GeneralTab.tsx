@@ -533,15 +533,9 @@ export function GeneralTab({
         <hr className="ds-divider" />
 
         <div className="ds-row-between">
-          <Button
-            variant="secondary"
-            loading={busyAction === 'reset'}
-            disabled={busyAction !== null}
-            onClick={() => setConfirmResetOpen(true)}
-          >
-            <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
-            <span>Reset Defaults</span>
-          </Button>
+          <span className="ds-hint">
+            Saves concurrency, thumbnail size, priority, and wait timer defaults.
+          </span>
           <Button
             variant="primary"
             loading={busyAction === 'save'}
@@ -554,6 +548,25 @@ export function GeneralTab({
           </Button>
         </div>
       </GlassPanel>
+
+      <section className="ds-danger-zone" aria-label="Reset general defaults">
+        <div className="ds-danger-zone-meta">
+          <h2 className="ds-danger-zone-title">Reset Preferences</h2>
+          <p className="ds-hint">
+            Restore default threads, thumbnail sizes (96, 256), Below Normal priority, and timers.
+          </p>
+        </div>
+        <Button
+          variant="danger"
+          size="sm"
+          loading={busyAction === 'reset'}
+          disabled={busyAction !== null}
+          onClick={() => setConfirmResetOpen(true)}
+        >
+          <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
+          <span>Reset Defaults</span>
+        </Button>
+      </section>
 
       <ConfirmDialog
         open={confirmElevateOpen}

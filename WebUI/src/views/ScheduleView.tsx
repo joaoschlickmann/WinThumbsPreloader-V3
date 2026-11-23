@@ -19,6 +19,7 @@ import { StatusPill } from '../components/ui/StatusPill';
 import { Switch } from '../components/ui/Switch';
 
 export interface ScheduleViewProps {
+  onScheduleUpdated?: (next: ScheduleState) => void;
   onNotify: (tone: 'info' | 'warning' | 'error', message: string) => void;
 }
 
@@ -43,7 +44,10 @@ function to24Hour(hour12: number, period: 'AM' | 'PM'): number {
   return period === 'PM' ? normalized + 12 : normalized;
 }
 
-export function ScheduleView({ onNotify }: ScheduleViewProps) {
+export function ScheduleView({
+  onScheduleUpdated,
+  onNotify,
+}: ScheduleViewProps) {
   const [state, setState] = useState<ScheduleState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,9 +75,11 @@ export function ScheduleView({ onNotify }: ScheduleViewProps) {
   const threadsId = useId();
   const customPathsId = useId();
 
-  const applyServerState = useCallback((next: ScheduleState) => {
-    setState(next);
-    setEnabled(next.taskExists ? next.enabled : true);
+  const applyServerState = useCallback(
+    (next: ScheduleState) => {
+      setState(next);
+      onScheduleUpdated?.(next);
+      setEnabled(next.taskExists ? next.enabled : true);
     setFrequency(
       next.frequency === 'Hour' ||
         next.frequency === 'Day' ||
@@ -93,7 +99,7 @@ export function ScheduleView({ onNotify }: ScheduleViewProps) {
     setDriveSortChoice(next.driveSortChoice);
     setTwentyFourHourMode(next.twentyFourHourMode);
     setDetailedTimeMode(next.detailedTimeMode);
-  }, []);
+  }, [onScheduleUpdated]);
 
   useEffect(() => {
     let active = true;
@@ -344,21 +350,32 @@ export function ScheduleView({ onNotify }: ScheduleViewProps) {
             Scheduler (<span className="ds-mono">WinThumbsPreloaderTask</span>).
           </p>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => void handleOpenTaskScheduler()}
-        >
-          <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-          <span>Open Windows Task Scheduler</span>
-        </Button>
+        <div className="ds-primary-actions">
+          <Button
+            variant="primary"
+            loading={saving}
+            loadingLabel="Saving..."
+            onClick={() => void handleSaveTask()}
+          >
+            <Save size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Save Scheduled Task</span>
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void handleOpenTaskScheduler()}
+          >
+            <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Open Windows Task Scheduler</span>
+          </Button>
+        </div>
       </div>
 
       <GlassPanel
         title="Task Status"
         actions={
           state?.taskExists ? (
-            <StatusPill tone={state.enabled ? 'active' : 'warning'}>
+            <StatusPill tone={state.enabled ? 'ok' : 'warning'}>
               {state.enabled ? 'Enabled' : 'Disabled'}
             </StatusPill>
           ) : (
@@ -687,27 +704,26 @@ export function ScheduleView({ onNotify }: ScheduleViewProps) {
             placeholder="D:\Media\Incoming&#10;\\NAS\Photos"
           />
         </div>
-
-        <div className="ds-row-between">
-          <Button
-            variant="danger"
-            disabled={!state?.taskExists || saving}
-            onClick={() => setConfirmDeleteOpen(true)}
-          >
-            <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-            <span>Delete Scheduled Task</span>
-          </Button>
-          <Button
-            variant="primary"
-            loading={saving}
-            loadingLabel="Saving..."
-            onClick={() => void handleSaveTask()}
-          >
-            <Save size={14} strokeWidth={2} aria-hidden="true" />
-            <span>Save Scheduled Task</span>
-          </Button>
-        </div>
       </GlassPanel>
+
+      <section className="ds-danger-zone" aria-label="Remove automation">
+        <div className="ds-danger-zone-meta">
+          <h2 className="ds-danger-zone-title">Remove Automation</h2>
+          <p className="ds-hint">
+            Unregister WinThumbsPreloaderTask from Windows Task Scheduler. You
+            can recreate it at any time.
+          </p>
+        </div>
+        <Button
+          variant="danger"
+          size="sm"
+          disabled={!state?.taskExists || saving}
+          onClick={() => setConfirmDeleteOpen(true)}
+        >
+          <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+          <span>Delete Scheduled Task</span>
+        </Button>
+      </section>
 
       <ConfirmDialog
         open={confirmDeleteOpen}

@@ -414,7 +414,7 @@ export function buildInitialSettingsState(): SettingsStateDto {
     },
     about: {
       appName: 'WinThumbsPreloader',
-      version: '3.3.0',
+      version: '3.4.0',
       isRunningAsAdmin: false,
       projectUrl: 'https://github.com/joaoschlickmann/WinThumbsPreloader-V3',
       licenseText:

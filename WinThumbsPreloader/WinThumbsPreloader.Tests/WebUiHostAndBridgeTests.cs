@@ -162,7 +162,7 @@ namespace WinThumbsPreloader.Tests
             await RunOnStaThreadAsync(() =>
             {
                 using var trayHost = new TrayHostController(new CacheService(), new UpdateService(), _ => { });
-                using var shellForm = new MainShellForm(trayHost, "preload");
+                using var shellForm = new MainShellForm(trayHost, "overview");
                 try
                 {
                     shellForm.StartPosition = FormStartPosition.Manual;
@@ -174,7 +174,7 @@ namespace WinThumbsPreloader.Tests
                     AwaitWithMessagePump(shellForm.WaitUntilReadyAsync(TimeSpan.FromSeconds(20)), 22000);
                     PumpEventsFor(700);
 
-                    string[] views = ["preload", "cache", "schedule", "codecs", "optimizer", "settings"];
+                    string[] views = ["overview", "preload", "cache", "schedule", "codecs", "optimizer", "settings"];
                     foreach (string view in views)
                     {
                         shellForm.NavigateToView(view);
@@ -211,6 +211,17 @@ namespace WinThumbsPreloader.Tests
                     catch { }
                 }
             });
+        }
+
+        [Theory]
+        [InlineData("https://github.com/joaoschlickmann/WinThumbsPreloader-V3")]
+        [InlineData("https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases")]
+        [InlineData("https://github.com/Mfarooq360/WinThumbsPreloader-V2")]
+        [InlineData("https://github.com/bruhov/WinThumbsPreloader")]
+        public async Task WebBridge_OpenExternalUrl_AllowsTrustedProjectAndCreditGitHubUrls(string candidateUrl)
+        {
+            Assert.True(UpdateService.IsAllowedExternalUrl(candidateUrl));
+            await Task.CompletedTask;
         }
 
         [Theory]

@@ -339,15 +339,6 @@ export function ExtensionsTab({
               <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
               <span>Restore Defaults</span>
             </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => setConfirmClearOpen(true)}
-              disabled={!extensionsText}
-            >
-              <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-              <span>Clear All</span>
-            </Button>
           </div>
 
           <Button
@@ -362,6 +353,24 @@ export function ExtensionsTab({
           </Button>
         </div>
       </GlassPanel>
+
+      <section className="ds-danger-zone" aria-label="Clear tracked extensions">
+        <div className="ds-danger-zone-meta">
+          <h2 className="ds-danger-zone-title">Clear Tracked List</h2>
+          <p className="ds-hint">
+            Removes all file extensions from the editor buffer below.
+          </p>
+        </div>
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => setConfirmClearOpen(true)}
+          disabled={!extensionsText}
+        >
+          <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+          <span>Clear All</span>
+        </Button>
+      </section>
 
       <ConfirmDialog
         open={confirmClearOpen}

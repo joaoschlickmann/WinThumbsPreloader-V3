@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 
-export type StatusTone = 'neutral' | 'active' | 'warning' | 'error';
+export type StatusTone = 'neutral' | 'active' | 'ok' | 'warning' | 'error';
 
 export interface StatusPillProps {
   tone?: StatusTone;
@@ -19,18 +19,20 @@ export function StatusPill({
   className = '',
 }: StatusPillProps) {
   const toneClass =
-    tone === 'active'
-      ? 'ds-pill-active'
-      : tone === 'warning'
-        ? 'ds-pill-warning'
-        : tone === 'error'
-          ? 'ds-pill-error'
-          : '';
+    tone === 'ok'
+      ? 'ds-pill-ok'
+      : tone === 'active'
+        ? 'ds-pill-active'
+        : tone === 'warning'
+          ? 'ds-pill-warning'
+          : tone === 'error'
+            ? 'ds-pill-error'
+            : '';
 
   const resolvedIcon =
     icon ??
     (showDefaultIcon
-      ? tone === 'active'
+      ? tone === 'active' || tone === 'ok'
         ? <CheckCircle2 size={13} strokeWidth={2} aria-hidden="true" />
         : tone === 'warning'
           ? <AlertTriangle size={13} strokeWidth={2} aria-hidden="true" />

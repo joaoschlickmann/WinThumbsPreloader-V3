@@ -21,6 +21,38 @@ export interface AboutTabProps {
   onNotify: (tone: 'info' | 'warning' | 'error', message: string) => void;
 }
 
+const RELEASES_URL = 'https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases';
+const UPSTREAM_V2_URL = 'https://github.com/Mfarooq360/WinThumbsPreloader-V2';
+const UPSTREAM_V1_URL = 'https://github.com/bruhov/WinThumbsPreloader';
+
+interface ContributorCredit {
+  author: string;
+  role: string;
+  repoLabel: string;
+  url: string;
+}
+
+const CONTRIBUTOR_CREDITS: ReadonlyArray<ContributorCredit> = [
+  {
+    author: 'João Schlickmann',
+    role: 'WinThumbsPreloader v3 (2026) — WebView2 & React UI/UX, WinThumbsCodecs & Installer',
+    repoLabel: 'github.com/joaoschlickmann/WinThumbsPreloader-V3',
+    url: 'https://github.com/joaoschlickmann/WinThumbsPreloader-V3',
+  },
+  {
+    author: 'Mutahar Farooq',
+    role: 'WinThumbsPreloader v2 (2026) — Cache Backup/Restore Engine, Optimizer & Bulk Preloader',
+    repoLabel: 'github.com/Mfarooq360/WinThumbsPreloader-V2',
+    url: UPSTREAM_V2_URL,
+  },
+  {
+    author: 'Dmitry Bruhov',
+    role: 'Original WinThumbsPreloader (2018) — Core Thumbnail Extraction Architecture',
+    repoLabel: 'github.com/bruhov/WinThumbsPreloader',
+    url: UPSTREAM_V1_URL,
+  },
+];
+
 const CLI_REFERENCE: ReadonlyArray<{
   flag: string;
   description: string;
@@ -166,7 +198,12 @@ export function AboutTab({
               {about.isRunningAsAdmin ? 'Admin' : 'Standard'}
             </StatusPill>
           </div>
-          <div>
+          <div className="ds-project-url-box">
+            <span className="ds-hint ds-mono ds-ellipsis">
+              {about.projectUrl}
+            </span>
+          </div>
+          <div className="ds-row">
             <Button
               variant="secondary"
               size="sm"
@@ -174,6 +211,14 @@ export function AboutTab({
             >
               <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
               <span>GitHub Repository</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void bridge.openExternalUrl(RELEASES_URL)}
+            >
+              <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
+              <span>View Releases</span>
             </Button>
           </div>
         </GlassPanel>
@@ -219,6 +264,39 @@ export function AboutTab({
         </GlassPanel>
       </div>
 
+      <GlassPanel title="Credits &amp; GitHub Projects">
+        <div className="ds-credits-list">
+          {CONTRIBUTOR_CREDITS.map((credit) => (
+            <div key={credit.author} className="ds-credit-row">
+              <div className="ds-credit-meta">
+                <span className="ds-resource-name">{credit.author}</span>
+                <span className="ds-credit-role">{credit.role}</span>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  void bridge.openExternalUrl(
+                    credit.author === 'João Schlickmann'
+                      ? about.projectUrl || credit.url
+                      : credit.url
+                  )
+                }
+              >
+                <ExternalLink size={13} strokeWidth={2} aria-hidden="true" />
+                <span className="ds-mono">{credit.repoLabel}</span>
+              </Button>
+            </div>
+          ))}
+        </div>
+        <p className="ds-hint" style={{ margin: 0 }}>
+          Built-in native codecs and desktop shell powered by{' '}
+          <strong>craft-libs</strong>, <strong>PDFium</strong>,{' '}
+          <strong>resvg</strong>, <strong>Microsoft Edge WebView2</strong>,{' '}
+          <strong>React</strong>, and <strong>Lucide Icons</strong>.
+        </p>
+      </GlassPanel>
+
       <GlassPanel title="CLI Reference">
         <div className="ds-table-wrap ds-scroller">
           <table className="ds-table">
@@ -257,15 +335,7 @@ export function AboutTab({
         </div>
       </GlassPanel>
 
-      <GlassPanel title="Credits &amp; License">
-        <p className="ds-hint" style={{ margin: 0 }}>
-          Original WinThumbsPreloader by <strong>Dmitry Bruhov (2018)</strong>.
-          WinThumbsPreloader v2/v3 enhancements by{' '}
-          <strong>Mutahar Farooq (2026)</strong> and{' '}
-          <strong>João Schlickmann (2026)</strong>. Built-in native codecs powered
-          by <strong>craft-libs</strong>, <strong>PDFium</strong>, and{' '}
-          <strong>resvg</strong>.
-        </p>
+      <GlassPanel title="MIT License">
         <pre className="ds-license-box ds-scroller">{about.licenseText}</pre>
       </GlassPanel>
     </div>

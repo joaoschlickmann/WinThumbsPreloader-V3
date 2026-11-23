@@ -6,7 +6,9 @@ import type {
   CacheResetEvent,
   CacheSnapshot,
   CodecsStateDto,
+  OptimizerStateDto,
   PreloadPathValidationItem,
+  ScheduleState,
   UpdateProgressEvent,
   UpdateStatusDto,
   ViewId,
@@ -16,6 +18,7 @@ import { Shell } from './components/Shell';
 import { UpdateModal } from './components/UpdateModal';
 import { LiveAnnouncer } from './components/ui/LiveAnnouncer';
 import { ToastRegion, type ToastItem } from './components/ui/ToastRegion';
+import { OverviewView } from './views/OverviewView';
 import { PreloadView } from './views/PreloadView';
 import { CacheView } from './views/CacheView';
 import { ScheduleView } from './views/ScheduleView';
@@ -24,6 +27,7 @@ import { OptimizeView } from './views/OptimizeView';
 import { SettingsView } from './views/SettingsView';
 
 const VIEW_TITLES: Record<ViewId, string> = {
+  overview: 'Overview | WinThumbsPreloader',
   preload: 'Preload | WinThumbsPreloader',
   cache: 'Cache Manager | WinThumbsPreloader',
   schedule: 'Schedule | WinThumbsPreloader',
@@ -34,12 +38,15 @@ const VIEW_TITLES: Record<ViewId, string> = {
 
 export function App() {
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
-  const [activeView, setActiveView] = useState<ViewId>('preload');
+  const [activeView, setActiveView] = useState<ViewId>('overview');
   const [cacheSnapshot, setCacheSnapshot] = useState<CacheSnapshot | null>(null);
   const [cacheProgress, setCacheProgress] = useState<CacheProgressEvent | null>(
     null
   );
   const [codecsState, setCodecsState] = useState<CodecsStateDto | null>(null);
+  const [optimizerState, setOptimizerState] =
+    useState<OptimizerStateDto | null>(null);
+  const [scheduleState, setScheduleState] = useState<ScheduleState | null>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusDto | null>(null);
   const [updateProgress, setUpdateProgress] =
     useState<UpdateProgressEvent | null>(null);
@@ -58,7 +65,8 @@ export function App() {
     new Map()
   );
 
-  const { themeMode, systemTheme, setTheme, syncBootstrapTheme } = useTheme();
+  const { themeMode, effectiveTheme, systemTheme, setTheme, syncBootstrapTheme } =
+    useTheme();
 
   const notify = useCallback(
     (tone: 'info' | 'warning' | 'error', message: string) => {
@@ -111,12 +119,14 @@ export function App() {
       bridge.getBootstrap(),
       bridge.cache.getState(),
       bridge.codecs.getState(),
-    ]).then(([bootRes, cacheRes, codecsRes]) => {
+      bridge.optimizer.getState(),
+      bridge.schedule.getState(),
+    ]).then(([bootRes, cacheRes, codecsRes, optimizerRes, scheduleRes]) => {
       if (!active) return;
       if (bootRes.status === 'fulfilled') {
         const b = bootRes.value;
         setBootstrap(b);
-        setActiveView(b.initialView || 'preload');
+        setActiveView(b.initialView || 'overview');
         syncBootstrapTheme(b.theme);
       }
       if (cacheRes.status === 'fulfilled') {
@@ -124,6 +134,12 @@ export function App() {
       }
       if (codecsRes.status === 'fulfilled') {
         setCodecsState(codecsRes.value);
+      }
+      if (optimizerRes.status === 'fulfilled') {
+        setOptimizerState(optimizerRes.value);
+      }
+      if (scheduleRes.status === 'fulfilled') {
+        setScheduleState(scheduleRes.value);
       }
     });
 
@@ -202,6 +218,36 @@ export function App() {
   ).length;
   const totalCodecsCount = codecsState?.families?.length ?? 0;
 
+  const optimizerTweaks = optimizerState?.tweaks ?? [];
+  const appliedOptimizationsCount =
+    optimizerState !== null
+      ? optimizerTweaks.filter((t) => t.enabled).length
+      : null;
+  const totalOptimizationsCount =
+    optimizerState !== null ? optimizerTweaks.length : null;
+  const scheduleEnabled =
+    scheduleState !== null
+      ? Boolean(scheduleState.taskExists && scheduleState.enabled)
+      : null;
+
+  const mergePreloadItems = useCallback(
+    (items: PreloadPathValidationItem[]) => {
+      setPreloadQueue((prev) => {
+        const map = new Map<string, PreloadPathValidationItem>();
+        for (const existing of prev) {
+          const key = (existing.normalizedPath || existing.input).toLowerCase();
+          map.set(key, existing);
+        }
+        for (const next of items) {
+          const key = (next.normalizedPath || next.input).toLowerCase();
+          map.set(key, next);
+        }
+        return Array.from(map.values());
+      });
+    },
+    []
+  );
+
   return (
     <>
       <LiveAnnouncer
@@ -213,17 +259,39 @@ export function App() {
         activeView={activeView}
         onNavigate={setActiveView}
         appName={bootstrap?.appName ?? 'WinThumbsPreloader'}
-        version={bootstrap?.version ?? '3.3.0'}
+        version={bootstrap?.version ?? '3.4.0'}
         isAdmin={bootstrap?.isRunningAsAdmin ?? false}
+        effectiveTheme={effectiveTheme}
+        onToggleTheme={() =>
+          void setTheme(effectiveTheme === 'dark' ? 'light' : 'dark')
+        }
         cacheSnapshot={cacheSnapshot}
         cacheProgress={cacheProgress}
+        stagedQueueCount={preloadQueue.length}
         activeCodecsCount={activeCodecsCount}
         totalCodecsCount={totalCodecsCount}
+        scheduleEnabled={scheduleEnabled}
+        appliedOptimizationsCount={appliedOptimizationsCount}
+        totalOptimizationsCount={totalOptimizationsCount}
         updateStatus={updateStatus}
         onOpenUpdateModal={() => setUpdateModalOpen(true)}
         onMinimizeToTray={() => void bridge.minimizeToTray()}
         onQuit={() => void bridge.quit()}
       >
+        {activeView === 'overview' && (
+          <OverviewView
+            cacheSnapshot={cacheSnapshot}
+            cacheProgress={cacheProgress}
+            codecsState={codecsState}
+            optimizerState={optimizerState}
+            scheduleState={scheduleState}
+            preloadQueueCount={preloadQueue.length}
+            onStagePreloadItems={mergePreloadItems}
+            onCacheSnapshotUpdated={setCacheSnapshot}
+            onNavigate={setActiveView}
+            onNotify={notify}
+          />
+        )}
         {activeView === 'preload' && (
           <PreloadView
             initialLaunchWarning={
@@ -246,7 +314,12 @@ export function App() {
             onNotify={notify}
           />
         )}
-        {activeView === 'schedule' && <ScheduleView onNotify={notify} />}
+        {activeView === 'schedule' && (
+          <ScheduleView
+            onScheduleUpdated={setScheduleState}
+            onNotify={notify}
+          />
+        )}
         {activeView === 'codecs' && (
           <CodecsView
             onNavigate={setActiveView}
@@ -254,7 +327,12 @@ export function App() {
             onNotify={notify}
           />
         )}
-        {activeView === 'optimizer' && <OptimizeView onNotify={notify} />}
+        {activeView === 'optimizer' && (
+          <OptimizeView
+            onOptimizerUpdated={setOptimizerState}
+            onNotify={notify}
+          />
+        )}
         {activeView === 'settings' && (
           <SettingsView
             themeMode={themeMode}
@@ -273,7 +351,7 @@ export function App() {
 
       <UpdateModal
         open={updateModalOpen}
-        currentVersion={bootstrap?.version ?? '3.3.0'}
+        currentVersion={bootstrap?.version ?? '3.4.0'}
         updateStatus={updateStatus}
         progress={updateProgress}
         onStatusUpdated={setUpdateStatus}

@@ -335,16 +335,6 @@ export function LoggingTab({
               <span>Open Logs Folder</span>
             </Button>
             <Button
-              variant="danger"
-              size="sm"
-              loading={busyAction === 'clear'}
-              disabled={busyAction !== null}
-              onClick={() => setConfirmClearOpen(true)}
-            >
-              <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-              <span>Clear All Logs</span>
-            </Button>
-            <Button
               variant="ghost"
               size="sm"
               loading={busyAction === 'reset'}
@@ -368,6 +358,25 @@ export function LoggingTab({
           </Button>
         </div>
       </GlassPanel>
+
+      <section className="ds-danger-zone" aria-label="Log maintenance">
+        <div className="ds-danger-zone-meta">
+          <h2 className="ds-danger-zone-title">Log Maintenance</h2>
+          <p className="ds-hint">
+            Permanently deletes all diagnostic log files stored in the configured log directory.
+          </p>
+        </div>
+        <Button
+          variant="danger"
+          size="sm"
+          loading={busyAction === 'clear'}
+          disabled={busyAction !== null}
+          onClick={() => setConfirmClearOpen(true)}
+        >
+          <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+          <span>Clear All Logs</span>
+        </Button>
+      </section>
 
       <ConfirmDialog
         open={confirmClearOpen}

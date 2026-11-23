@@ -1,4 +1,5 @@
 export type ViewId =
+  | 'overview'
   | 'preload'
   | 'cache'
   | 'schedule'

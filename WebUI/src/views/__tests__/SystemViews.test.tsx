@@ -215,7 +215,28 @@ describe('System Views (CodecsView, OptimizeView, SettingsView)', () => {
     // 4. About & Updates tab
     await user.click(screen.getByRole('tab', { name: /About & Updates/i }));
     expect(
-      await screen.findByRole('table', {
+      await screen.findByText(
+        'https://github.com/joaoschlickmann/WinThumbsPreloader-V3'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /Credits & GitHub Projects/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText('João Schlickmann')).toBeInTheDocument();
+    expect(screen.getByText('Mutahar Farooq')).toBeInTheDocument();
+    expect(screen.getByText('Dmitry Bruhov')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: /github\.com\/Mfarooq360\/WinThumbsPreloader-V2/i,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: /github\.com\/bruhov\/WinThumbsPreloader/i,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('table', {
         name: /WinThumbsPreloader command-line flags/i,
       })
     ).toBeInTheDocument();

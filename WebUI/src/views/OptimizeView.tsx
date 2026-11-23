@@ -23,6 +23,7 @@ import { StatusPill, type StatusTone } from '../components/ui/StatusPill';
 import { Switch } from '../components/ui/Switch';
 
 export interface OptimizeViewProps {
+  onOptimizerUpdated?: (next: OptimizerStateDto) => void;
   onNotify: (tone: 'info' | 'warning' | 'error', message: string) => void;
 }
 
@@ -41,7 +42,7 @@ const PROFILE_KEYS: Record<string, keyof OptimizerProfileDto> = {
 };
 
 function getTweakStatusTone(stateText: string): StatusTone {
-  if (stateText === 'Optimized') return 'active';
+  if (stateText === 'Optimized') return 'ok';
   if (stateText === 'PartiallyOptimized') return 'warning';
   return 'neutral';
 }
@@ -51,7 +52,10 @@ function getTweakStatusLabel(stateText: string): string {
   return stateText;
 }
 
-export function OptimizeView({ onNotify }: OptimizeViewProps) {
+export function OptimizeView({
+  onOptimizerUpdated,
+  onNotify,
+}: OptimizeViewProps) {
   const [state, setState] = useState<OptimizerStateDto | null>(null);
   const [draftProfile, setDraftProfile] = useState<OptimizerProfileDto | null>(
     null
@@ -70,6 +74,7 @@ export function OptimizeView({ onNotify }: OptimizeViewProps) {
       const next = await bridge.optimizer.getState();
       setState(next);
       setDraftProfile(next.profile);
+      onOptimizerUpdated?.(next);
     } catch (err) {
       onNotify(
         'error',
@@ -78,7 +83,7 @@ export function OptimizeView({ onNotify }: OptimizeViewProps) {
           : 'Failed to inspect Windows optimization state.'
       );
     }
-  }, [onNotify]);
+  }, [onNotify, onOptimizerUpdated]);
 
   useEffect(() => {
     void loadState();
@@ -124,6 +129,7 @@ export function OptimizeView({ onNotify }: OptimizeViewProps) {
       if (res.state) {
         setState(res.state);
         setDraftProfile(res.state.profile);
+        onOptimizerUpdated?.(res.state);
       }
       onNotify(
         res.ok
@@ -155,6 +161,7 @@ export function OptimizeView({ onNotify }: OptimizeViewProps) {
       if (res.state) {
         setState(res.state);
         setDraftProfile(res.state.profile);
+        onOptimizerUpdated?.(res.state);
       }
       onNotify(res.ok ? 'info' : 'error', res.message);
     } catch (err) {
@@ -285,18 +292,41 @@ export function OptimizeView({ onNotify }: OptimizeViewProps) {
             Prevent Windows maintenance from resetting your thumbnail cache and
             tune File Explorer performance policies.
           </p>
+          <div className="ds-row" style={{ marginTop: 10 }}>
+            <StatusPill
+              tone={state?.isElevated ? 'ok' : 'neutral'}
+              icon={<Shield size={13} strokeWidth={2} aria-hidden="true" />}
+            >
+              {state?.isElevated ? 'Admin' : 'Standard User'}
+            </StatusPill>
+          </div>
         </div>
-        <div className="ds-row">
-          <StatusPill
-            tone={state?.isElevated ? 'active' : 'neutral'}
-            icon={<Shield size={13} strokeWidth={2} aria-hidden="true" />}
+        <div className="ds-primary-actions">
+          <Button
+            variant="primary"
+            loading={busyAction === 'apply'}
+            loadingLabel="Applying..."
+            disabled={!draftProfile || busyAction !== null}
+            onClick={() => void handleApply(false)}
           >
-            {state?.isElevated ? 'Admin' : 'Standard User'}
-          </StatusPill>
+            <span>Apply Optimizations</span>
+          </Button>
+          {!state?.isElevated && needsElevationForDraft && (
+            <Button
+              variant="secondary"
+              loading={busyAction === 'elevateApply'}
+              disabled={!draftProfile || busyAction !== null}
+              onClick={() => void handleApply(true)}
+            >
+              <Shield size={14} strokeWidth={2} aria-hidden="true" />
+              <span>Elevate &amp; Apply (UAC)</span>
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
             loading={busyAction === 'recommended'}
+            disabled={busyAction !== null}
             onClick={() => void handleLoadRecommended()}
           >
             <Sparkles size={14} strokeWidth={2} aria-hidden="true" />
@@ -465,16 +495,6 @@ export function OptimizeView({ onNotify }: OptimizeViewProps) {
                 >
                   Restart Windows Explorer
                 </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  loading={busyAction === 'restoreDefaults'}
-                  disabled={busyAction !== null}
-                  onClick={() => setConfirmAction('restoreDefaults')}
-                >
-                  <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
-                  <span>Restore Windows Defaults</span>
-                </Button>
               </div>
               {shellToolMap.rebuildIconCache &&
                 renderDisclosure(
@@ -490,53 +510,30 @@ export function OptimizeView({ onNotify }: OptimizeViewProps) {
                   shellToolMap.restartExplorer.pros,
                   shellToolMap.restartExplorer.cons
                 )}
-              {shellToolMap.restoreDefaults &&
-                renderDisclosure(
-                  'tool-restoreDefaults',
-                  shellToolMap.restoreDefaults.whatItDoes,
-                  shellToolMap.restoreDefaults.pros,
-                  shellToolMap.restoreDefaults.cons
-                )}
             </article>
           </div>
         </GlassPanel>
       )}
       </div>
 
-      <div className="ds-row-between">
-        <Button
-          variant="secondary"
-          loading={busyAction === 'recommended'}
-          disabled={busyAction !== null}
-          onClick={() => void handleLoadRecommended()}
-        >
-          <Sparkles size={14} strokeWidth={2} aria-hidden="true" />
-          <span>Load Recommended</span>
-        </Button>
-
-        <div className="ds-row">
-          {!state?.isElevated && needsElevationForDraft && (
-            <Button
-              variant="secondary"
-              loading={busyAction === 'elevateApply'}
-              disabled={!draftProfile || busyAction !== null}
-              onClick={() => void handleApply(true)}
-            >
-              <Shield size={14} strokeWidth={2} aria-hidden="true" />
-              <span>Elevate &amp; Apply (UAC)</span>
-            </Button>
-          )}
-          <Button
-            variant="primary"
-            loading={busyAction === 'apply'}
-            loadingLabel="Applying..."
-            disabled={!draftProfile || busyAction !== null}
-            onClick={() => void handleApply(false)}
-          >
-            <span>Apply Optimizations</span>
-          </Button>
+      <section className="ds-danger-zone" aria-label="Registry defaults">
+        <div className="ds-danger-zone-meta">
+          <h2 className="ds-danger-zone-title">Registry Defaults</h2>
+          <p className="ds-hint">
+            Revert modified thumbnail cache and Explorer policies back to stock Windows defaults.
+          </p>
         </div>
-      </div>
+        <Button
+          variant="danger"
+          size="sm"
+          loading={busyAction === 'restoreDefaults'}
+          disabled={busyAction !== null}
+          onClick={() => setConfirmAction('restoreDefaults')}
+        >
+          <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
+          <span>Restore Windows Defaults</span>
+        </Button>
+      </section>
 
       <ConfirmDialog
         open={confirmAction === 'restartExplorer'}

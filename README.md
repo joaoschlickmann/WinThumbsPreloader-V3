@@ -57,7 +57,7 @@ Building upon the foundation of **v1** (core preloading and Explorer context men
 - **Shared-ReadWrite Live Backup & Restore**: Uses `FileShare.ReadWrite | FileShare.Delete` streams and orders `thumbcache_*.db` writes prior to `thumbcache_idx.db`, enabling reliable backups and restores even when `explorer.exe`, `dllhost.exe`, or third-party File Open/Save dialogs hold open handles to cache files.
 - **Smart Bucket Spillover & `WTS_SLOWRECLAIM` Retention**: Requests `WTS_SLOWRECLAIM` to populate `thumbcache_sr.db` alongside standard streams and automatically spills over to the next unsaturated Windows cache bucket (`256 → 768 → 1280 → 1920 → 2560`) when a single `.db` file reaches the 1.6 GB soft ceiling.
 - **Elevated Mapped-Drive & UNC Resolver**: Resolves mapped network drive letters (`Z:\`, etc.) across UAC elevation boundaries via `WNetGetUniversalNameW` and `HKCU\Network` so scheduled or elevated tasks work seamlessly on NAS/SMB shares.
-- **Unified WebView2 UI ("Polished Obsidian / Liquid Light")**: Provides a single-window React + WebView2 desktop shell (`MainShellForm`) with Light (*Liquid Light*), Dark (*Polished Obsidian*), and System themes, accessible modal dialogs and controls, native drag-and-drop folder queueing, and automatic classic WinForms fallback if the WebView2 Runtime is unavailable.
+- **Unified WebView2 UI ("Polished Obsidian / Liquid Light")**: Provides a single-window React + WebView2 desktop shell (`MainShellForm`) with a grouped left sidebar workspace (`Overview`, `Preload`, `Cache`, `Schedule`, `Codecs`, `Optimize`, `Settings`), spatial primary/danger-zone layouts, Light (*Liquid Light*), Dark (*Polished Obsidian*), and System themes, accessible modal dialogs, native drag-and-drop folder queueing, and automatic classic WinForms fallback if the WebView2 Runtime is unavailable.
 - **Automated Test Suite**: Includes a 133-test xUnit suite (`WinThumbsPreloader.Tests`) plus 7 Rust native COM/decoder tests (`WinThumbsCodecs`) covering STA COM concurrency, binary `CMMM`/`IMMM` sanitization, cross-process backup locks, bucket spillover, all 10 built-in codec decoders, security hardening, and visual E2E GUI flows.
 
 ---
@@ -113,7 +113,7 @@ Building upon the foundation of **v1** (core preloading and Explorer context men
 ## Installation
 
 ### Option 1: Installer (Recommended)
-1. Run `WinThumbsPreloader-3.3.0-setup.exe` (located in `InnoSetup/Output/` when compiled locally, or from the [Releases page](https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases)).
+1. Run `WinThumbsPreloader-3.4.0-setup.exe` (located in `InnoSetup/Output/` when compiled locally, or from the [Releases page](https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases)).
 2. The installer registers the Windows Explorer right-click context menus for **Folders**, **Folder Backgrounds**, and **Drives**, configures `SilentCleanup` cache protection, and adds `WinThumbsPreloader` to your system `PATH`.
 
 ### Option 2: Standalone Executable
@@ -130,7 +130,7 @@ Right-click any **Folder**, **Folder Background**, or **Drive** in Windows Explo
 
 ### Graphical Interface (GUI)
 Launching `WinThumbsPreloader.exe` without path arguments opens the unified WebView2 dashboard (**Polished Obsidian** / **Liquid Light**):
-- **Unified Single-Window Navigation (No `Shift`/`Ctrl` Modifiers Required)**: Switch directly between **Preload**, **Cache**, **Schedule**, **Codecs**, **Optimize**, and **Settings** in the top navigation bar without hidden `Shift` or `Ctrl` modifier shortcuts.
+- **Grouped Left Sidebar Workspace (No `Shift`/`Ctrl` Modifiers Required)**: Switch cleanly via the persistent sidebar between **Workspace** (**Overview**, **Preload**), **System** (**Cache**, **Schedule**, **Codecs**, **Optimize**), and **Preferences** (**Settings** & **About & Updates** with project repository links and predecessor credits), backed by a pinned live Cache Health indicator and quick utility actions.
 - **Themes & Accessible Controls**: Choose **Light** (*Liquid Light*), **Dark** (*Polished Obsidian*), or **System** theme in **Settings → General**. Destructive confirmations (**Force Restore (Restart Explorer)**, **Clear Backup**, **Clear Cache**, **Reset Defaults**) and prompts use accessible modal dialogs with keyboard focus management and live-region status announcements.
 - **Preload View**: Drag and drop folders or add paths directly, toggle **Recursive** and **Multithreaded** explicitly, run **Sequential** or **Simultaneous** batches, and save/load presets.
 - **Cache View**: View live **Explorer Cache Size**, per-bucket sizes, and **Backup Size**; toggle **Auto Backup**, **Auto Restore**, **Cache Reset Alert**, and **Start with Windows**; trigger **Force Restore (Restart Explorer)**, **Clear Backup**, or **Clear Cache** directly from dedicated buttons; and configure backup folder location, update intervals, deletion methods, and safety modes.
@@ -207,7 +207,7 @@ dotnet test "WinThumbsPreloader\WinThumbsPreloader.sln" --locked-mode
 dotnet build "WinThumbsPreloader\WinThumbsPreloader.csproj" -c Release -r win-x64 --no-self-contained
 .\scripts\build-codecs.ps1 -Configuration Release -SkipPdfiumDownload -CopyToOutput
 
-# Compile the Inno Setup installer (outputs to InnoSetup\Output\WinThumbsPreloader-3.3.0-setup.exe)
+# Compile the Inno Setup installer (outputs to InnoSetup\Output\WinThumbsPreloader-3.4.0-setup.exe)
 ISCC.exe "InnoSetup\installer.iss"
 ```
 

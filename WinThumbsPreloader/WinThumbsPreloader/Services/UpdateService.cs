@@ -155,6 +155,9 @@ namespace WinThumbsPreloader.Services
             return OpenTrustedUrl(parsedUri.AbsoluteUri);
         }
 
+        public const string UpstreamV2ProjectWebUrl = "https://github.com/Mfarooq360/WinThumbsPreloader-V2";
+        public const string UpstreamV1ProjectWebUrl = "https://github.com/bruhov/WinThumbsPreloader";
+
         public static bool IsAllowedExternalUrl(string? url)
         {
             if (string.IsNullOrWhiteSpace(url))
@@ -163,6 +166,8 @@ namespace WinThumbsPreloader.Services
             string trimmed = url.Trim();
             return trimmed.Equals(AutoUpdater.ProjectWebUrl, StringComparison.OrdinalIgnoreCase) ||
                    trimmed.Equals(AutoUpdater.ReleasesWebUrl, StringComparison.OrdinalIgnoreCase) ||
+                   trimmed.Equals(UpstreamV2ProjectWebUrl, StringComparison.OrdinalIgnoreCase) ||
+                   trimmed.Equals(UpstreamV1ProjectWebUrl, StringComparison.OrdinalIgnoreCase) ||
                    AutoUpdater.IsTrustedGitHubReleasePageUrl(trimmed);
         }
 

@@ -6,11 +6,14 @@ import {
   FileImage,
   FolderUp,
   Layers,
+  LayoutGrid,
+  Moon,
   PanelBottomClose,
   Power,
   Settings,
   Shield,
   Sliders,
+  Sun,
 } from 'lucide-react';
 import type {
   CacheProgressEvent,
@@ -22,19 +25,29 @@ import { Button } from './ui/Button';
 import { ConfirmDialog } from './ui/ModalDialog';
 import { StatusPill } from './ui/StatusPill';
 
+type NavGroupId = 'WORKSPACE' | 'SYSTEM' | 'PREFERENCES';
+
 interface NavItem {
   id: ViewId;
   label: string;
+  group: NavGroupId;
   icon: typeof FolderUp;
 }
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
-  { id: 'preload', label: 'Preload', icon: FolderUp },
-  { id: 'cache', label: 'Cache', icon: Database },
-  { id: 'schedule', label: 'Schedule', icon: CalendarClock },
-  { id: 'codecs', label: 'Codecs', icon: FileImage },
-  { id: 'optimizer', label: 'Optimize', icon: Sliders },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'overview', label: 'Overview', group: 'WORKSPACE', icon: LayoutGrid },
+  { id: 'preload', label: 'Preload', group: 'WORKSPACE', icon: FolderUp },
+  { id: 'cache', label: 'Cache', group: 'WORKSPACE', icon: Database },
+  { id: 'schedule', label: 'Schedule', group: 'WORKSPACE', icon: CalendarClock },
+  { id: 'codecs', label: 'Codecs', group: 'SYSTEM', icon: FileImage },
+  { id: 'optimizer', label: 'Optimize', group: 'SYSTEM', icon: Sliders },
+  { id: 'settings', label: 'Settings', group: 'PREFERENCES', icon: Settings },
+];
+
+const NAV_GROUPS: ReadonlyArray<NavGroupId> = [
+  'WORKSPACE',
+  'SYSTEM',
+  'PREFERENCES',
 ];
 
 export interface ShellProps {
@@ -43,10 +56,16 @@ export interface ShellProps {
   appName: string;
   version: string;
   isAdmin: boolean;
+  effectiveTheme: 'dark' | 'light';
+  onToggleTheme: () => void;
   cacheSnapshot: CacheSnapshot | null;
   cacheProgress: CacheProgressEvent | null;
+  stagedQueueCount: number;
   activeCodecsCount: number;
   totalCodecsCount: number;
+  scheduleEnabled: boolean | null;
+  appliedOptimizationsCount: number | null;
+  totalOptimizationsCount: number | null;
   updateStatus: UpdateStatusDto | null;
   onOpenUpdateModal: () => void;
   onMinimizeToTray: () => void;
@@ -60,10 +79,16 @@ export function Shell({
   appName,
   version,
   isAdmin,
+  effectiveTheme,
+  onToggleTheme,
   cacheSnapshot,
   cacheProgress,
+  stagedQueueCount,
   activeCodecsCount,
   totalCodecsCount,
+  scheduleEnabled,
+  appliedOptimizationsCount,
+  totalOptimizationsCount,
   updateStatus,
   onOpenUpdateModal,
   onMinimizeToTray,
@@ -80,120 +105,189 @@ export function Shell({
     }
   };
 
+  const getBadgeText = (id: ViewId): string | null => {
+    switch (id) {
+      case 'preload':
+        return stagedQueueCount > 0 ? String(stagedQueueCount) : null;
+      case 'cache':
+        return cacheSnapshot?.explorerSizeFormatted ?? null;
+      case 'schedule':
+        return scheduleEnabled === null ? null : scheduleEnabled ? 'ON' : 'OFF';
+      case 'codecs':
+        return totalCodecsCount > 0
+          ? `${activeCodecsCount}/${totalCodecsCount}`
+          : null;
+      case 'optimizer':
+        return appliedOptimizationsCount !== null && totalOptimizationsCount
+          ? `${appliedOptimizationsCount}/${totalOptimizationsCount}`
+          : null;
+      case 'settings':
+        return updateStatus?.isUpdateAvailable ? 'Update' : null;
+      default:
+        return null;
+    }
+  };
+
+  const activeBucketsCount = (cacheSnapshot?.buckets ?? []).filter(
+    (b) => b.sizeBytes > 0
+  ).length;
+  const healthWarning = Boolean(cacheSnapshot?.resetRecognized);
+
   return (
     <div className="ds-shell">
       <a href="#main-heading" className="ds-skip-link visually-hidden">
         Skip to main content
       </a>
 
-      <header className="ds-header ds-glass">
-        <div className="ds-brand">
-          <Layers size={24} strokeWidth={2} aria-hidden="true" />
-          <span className="ds-brand-title">{appName}</span>
+      <aside className="ds-sidebar" aria-label="Workspace sidebar">
+        <div className="ds-sidebar-top">
+          <div className="ds-sidebar-brand">
+            <div className="ds-brand">
+              <Layers size={20} strokeWidth={2} aria-hidden="true" />
+              <span className="ds-brand-title">{appName}</span>
+            </div>
+            <span className="ds-version-tag">v{version}</span>
+          </div>
+
+          <nav aria-label="Primary" className="ds-nav">
+            {NAV_GROUPS.map((group) => (
+              <div key={group} className="ds-nav-group">
+                <span className="ds-nav-group-label">{group}</span>
+                {NAV_ITEMS.filter((item) => item.group === group).map((item) => {
+                  const Icon = item.icon;
+                  const current = activeView === item.id;
+                  const badge = getBadgeText(item.id);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="ds-nav-link"
+                      aria-current={current ? 'page' : undefined}
+                      onClick={() => onNavigate(item.id)}
+                    >
+                      <span className="ds-nav-link-lead">
+                        <Icon size={15} strokeWidth={2} aria-hidden="true" />
+                        <span>{item.label}</span>
+                      </span>
+                      {badge && (
+                        <span className="ds-nav-badge" aria-hidden="true">
+                          {badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </nav>
         </div>
 
-        <nav aria-label="Primary" className="ds-nav">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const current = activeView === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className="ds-nav-link"
-                aria-current={current ? 'page' : undefined}
-                onClick={() => onNavigate(item.id)}
-              >
-                <Icon size={16} strokeWidth={2} aria-hidden="true" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+        <div className="ds-sidebar-footer">
+          <button
+            type="button"
+            className="ds-sidebar-health"
+            data-warning={healthWarning}
+            aria-label="Open Cache Manager"
+            onClick={() => onNavigate('cache')}
+          >
+            <div className="ds-sidebar-health-head">
+              <span className="ds-sidebar-health-label">Cache Health</span>
+              <span className="ds-sidebar-health-state">
+                <span
+                  className={
+                    healthWarning ? 'ds-status-dot-warn' : 'ds-status-dot-ok'
+                  }
+                  aria-hidden="true"
+                />
+                <span>
+                  {cacheProgress
+                    ? `${cacheProgress.percent}%`
+                    : healthWarning
+                      ? 'Reset Alert'
+                      : 'Synced'}
+                </span>
+              </span>
+            </div>
+            <span className="ds-sidebar-health-metric">
+              {cacheSnapshot
+                ? `${cacheSnapshot.explorerSizeFormatted} · ${activeBucketsCount} Buckets`
+                : 'Loading cache...'}
+            </span>
+            <progress
+              className="ds-progress ds-progress-compact ds-progress-ok"
+              value={cacheProgress ? cacheProgress.percent : 100}
+              max={100}
+              aria-label="Cache health progress"
+            />
+          </button>
 
-        <div className="ds-header-actions">
           {updateStatus?.isUpdateAvailable && (
             <Button
               variant="secondary"
               size="sm"
               onClick={onOpenUpdateModal}
             >
-              <Download size={15} strokeWidth={2} aria-hidden="true" />
+              <Download size={14} strokeWidth={2} aria-hidden="true" />
               <span>Update Available</span>
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Minimize to Tray"
-            title="Minimize to Tray"
-            onClick={onMinimizeToTray}
-          >
-            <PanelBottomClose size={15} strokeWidth={2} aria-hidden="true" />
-            <span>Tray</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleQuitClick}
-          >
-            <Power size={15} strokeWidth={2} aria-hidden="true" />
-            <span>Quit</span>
-          </Button>
+
+          <div className="ds-sidebar-utils">
+            <StatusPill
+              tone={isAdmin ? 'warning' : 'neutral'}
+              icon={<Shield size={12} strokeWidth={2} aria-hidden="true" />}
+            >
+              {isAdmin ? 'Admin' : 'Standard'}
+            </StatusPill>
+
+            <div className="ds-sidebar-util-icons">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={
+                  effectiveTheme === 'dark'
+                    ? 'Switch to Light Theme'
+                    : 'Switch to Dark Theme'
+                }
+                title={
+                  effectiveTheme === 'dark'
+                    ? 'Switch to Light Theme'
+                    : 'Switch to Dark Theme'
+                }
+                onClick={onToggleTheme}
+              >
+                {effectiveTheme === 'dark' ? (
+                  <Sun size={15} strokeWidth={2} aria-hidden="true" />
+                ) : (
+                  <Moon size={15} strokeWidth={2} aria-hidden="true" />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Minimize to Tray"
+                title="Minimize to Tray"
+                onClick={onMinimizeToTray}
+              >
+                <PanelBottomClose size={15} strokeWidth={2} aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Quit"
+                title="Quit"
+                onClick={handleQuitClick}
+              >
+                <Power size={15} strokeWidth={2} aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
         </div>
-      </header>
+      </aside>
 
       <main className="ds-main ds-scroller">
         <div className="ds-content">{children}</div>
       </main>
-
-      <footer className="ds-footer">
-        <div className="ds-footer-group">
-          <span className="ds-footer-metric">
-            <span>Explorer Cache</span>
-            <span className="ds-footer-value">
-              {cacheSnapshot?.explorerSizeFormatted ?? '—'}
-            </span>
-          </span>
-          <span className="ds-footer-metric">
-            <span>Backup</span>
-            <span className="ds-footer-value">
-              {cacheSnapshot?.backupSizeFormatted ?? '—'}
-            </span>
-          </span>
-          <span className="ds-footer-metric">
-            <span>Codecs</span>
-            <span className="ds-footer-value">
-              {totalCodecsCount > 0
-                ? `${activeCodecsCount}/${totalCodecsCount}`
-                : '—'}
-            </span>
-          </span>
-          {cacheProgress !== null && (
-            <span className="ds-footer-metric">
-              <progress
-                className="ds-progress ds-progress-compact"
-                value={cacheProgress.percent}
-                max={100}
-                aria-label={`${cacheProgress.operation} progress`}
-              />
-              <span className="ds-footer-value">
-                {cacheProgress.operation} {cacheProgress.percent}%
-              </span>
-            </span>
-          )}
-        </div>
-
-        <div className="ds-footer-group">
-          <StatusPill
-            tone={isAdmin ? 'warning' : 'neutral'}
-            icon={<Shield size={12} strokeWidth={2} aria-hidden="true" />}
-          >
-            {isAdmin ? 'Admin' : 'Standard'}
-          </StatusPill>
-          <span className="ds-footer-value">v{version}</span>
-        </div>
-      </footer>
 
       <ConfirmDialog
         open={confirmQuitOpen}

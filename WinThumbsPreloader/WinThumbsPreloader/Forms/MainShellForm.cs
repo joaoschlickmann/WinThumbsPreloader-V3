@@ -681,16 +681,18 @@ namespace WinThumbsPreloader.Forms
         private static string NormalizeViewName(string? view)
         {
             if (string.IsNullOrWhiteSpace(view))
-                return "preload";
+                return "overview";
 
             return view.Trim().ToLowerInvariant() switch
             {
+                "overview" => "overview",
+                "preload" => "preload",
                 "cache" => "cache",
                 "schedule" => "schedule",
                 "codecs" => "codecs",
                 "optimizer" => "optimizer",
                 "settings" => "settings",
-                _ => "preload"
+                _ => "overview"
             };
         }
     }

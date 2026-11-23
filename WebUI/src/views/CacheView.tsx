@@ -4,7 +4,6 @@ import {
   Archive,
   Database,
   FolderOpen,
-  HardDrive,
   RefreshCw,
   RotateCcw,
   Save,
@@ -38,7 +37,7 @@ function getBackupStatusTone(status: string): StatusTone {
   switch (status) {
     case 'Writable':
     case 'WillBeCreated':
-      return 'active';
+      return 'ok';
     case 'WritableAdmin':
     case 'WillBeCreatedAdmin':
       return 'warning';
@@ -255,19 +254,55 @@ export function CacheView({
             Cache Manager
           </h1>
           <p className="ds-subtitle">
-            Monitor Windows Explorer thumbnail buckets, protect against cache
-            resets, and configure backup policies.
+            Routine backup &amp; restore controls stay cleanly separated from
+            Explorer-destructive maintenance actions.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => void refreshState()}
-          disabled={busyAction !== null}
-        >
-          <RefreshCw size={14} strokeWidth={2} aria-hidden="true" />
-          <span>Refresh</span>
-        </Button>
+
+        <div className="ds-primary-actions">
+          <Button
+            variant="primary"
+            disabled={busyAction !== null || !hasBackupPath}
+            loading={busyAction === 'backup'}
+            loadingLabel="Backing Up..."
+            onClick={() => {
+              if (snapshot?.backupLargerThanExplorer) {
+                setConfirmAction('backupOverwrite');
+              } else {
+                void runCacheOp('backup', () => bridge.cache.backup());
+              }
+            }}
+          >
+            <Database size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Backup Now</span>
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={busyAction !== null || !hasBackupPath}
+            loading={busyAction === 'restore'}
+            onClick={() => setConfirmAction('restore')}
+          >
+            <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Restore Backup</span>
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={busyAction !== null || !hasBackupPath}
+            loading={busyAction === 'forceRestore'}
+            onClick={() => setConfirmAction('forceRestore')}
+          >
+            <span>Force Restore (Restart Explorer)</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void refreshState()}
+            disabled={busyAction !== null}
+          >
+            <RefreshCw size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Refresh</span>
+          </Button>
+        </div>
       </div>
 
       {snapshot?.resetRecognized && (
@@ -302,93 +337,12 @@ export function CacheView({
         </div>
       )}
 
-      <div className="ds-grid-3">
+      <div className="ds-grid-2">
         <section className="ds-glass ds-card ds-stack-sm">
           <div className="ds-row-between">
             <h2 className="ds-label" style={{ margin: 0 }}>
               Explorer Cache
             </h2>
-            <Database size={16} strokeWidth={2} aria-hidden="true" />
-          </div>
-          <div className="ds-metric-value">
-            {snapshot?.explorerSizeFormatted ?? '—'}
-          </div>
-          {saturatedBuckets.length > 0 ? (
-            <div>
-              <StatusPill tone="warning">
-                1.6 GB Spillover Active ({saturatedBuckets.length} bucket
-                {saturatedBuckets.length === 1 ? '' : 's'} saturated)
-              </StatusPill>
-            </div>
-          ) : (
-            <span className="ds-hint">
-              {(snapshot?.buckets ?? []).filter((b) => b.sizeBytes > 0).length}{' '}
-              active thumbcache_*.db buckets
-            </span>
-          )}
-          <span className="ds-hint" style={{ marginTop: 'auto' }}>
-            2 GB offset-limit guard &amp; automatic spillover active.
-          </span>
-        </section>
-
-        <section className="ds-glass ds-card ds-stack-sm">
-          <div className="ds-row-between">
-            <h2 className="ds-label" style={{ margin: 0 }}>
-              Backup Snapshot
-            </h2>
-            <Archive size={16} strokeWidth={2} aria-hidden="true" />
-          </div>
-          <div className="ds-metric-value">
-            {snapshot?.backupSizeFormatted ?? 'N/A'}
-          </div>
-          <span className="ds-hint">
-            Last backup: {formatLastBackup(snapshot?.lastBackupDateTimeIso ?? null)}
-          </span>
-          <span className="ds-hint ds-mono ds-ellipsis">
-            {snapshot?.backupFolderPath || 'No backup folder configured'}
-          </span>
-          {snapshot?.backupFolderStatus && (
-            <div>
-              <StatusPill
-                tone={getBackupStatusTone(snapshot.backupFolderStatus.status)}
-              >
-                {snapshot.backupFolderStatus.message}
-              </StatusPill>
-            </div>
-          )}
-        </section>
-
-        <section className="ds-glass ds-card ds-stack-sm">
-          <div className="ds-row-between">
-            <h2 className="ds-label" style={{ margin: 0 }}>
-              Cache Operations
-            </h2>
-            <HardDrive size={16} strokeWidth={2} aria-hidden="true" />
-          </div>
-
-          {progress !== null ? (
-            <div className="ds-stack-sm">
-              <label htmlFor="cache-op-progress" className="ds-label">
-                {progress.operation === 'restore'
-                  ? 'Restoring backup...'
-                  : 'Backing up cache...'}{' '}
-                ({progress.percent}%)
-              </label>
-              <progress
-                id="cache-op-progress"
-                className="ds-progress"
-                value={progress.percent}
-                max={100}
-              />
-            </div>
-          ) : (
-            <p className="ds-hint" style={{ margin: 0 }}>
-              {lastFeedback ??
-                'Run manual backup, restore, or inspect Explorer cache folders.'}
-            </p>
-          )}
-
-          <div className="ds-row" style={{ marginTop: 'auto' }}>
             <Button
               variant="secondary"
               size="sm"
@@ -401,6 +355,33 @@ export function CacheView({
               <FolderOpen size={14} strokeWidth={2} aria-hidden="true" />
               <span>Open Cache Folder</span>
             </Button>
+          </div>
+          <div className="ds-row-between">
+            <span className="ds-metric-value">
+              {snapshot?.explorerSizeFormatted ?? '—'}
+            </span>
+            {saturatedBuckets.length > 0 ? (
+              <StatusPill tone="warning">
+                1.6 GB Spillover Active ({saturatedBuckets.length} bucket
+                {saturatedBuckets.length === 1 ? '' : 's'} saturated)
+              </StatusPill>
+            ) : (
+              <StatusPill tone="ok">
+                {(snapshot?.buckets ?? []).filter((b) => b.sizeBytes > 0).length}{' '}
+                active buckets
+              </StatusPill>
+            )}
+          </div>
+          <span className="ds-hint" style={{ marginTop: 'auto' }}>
+            2 GB offset-limit guard &amp; automatic spillover active.
+          </span>
+        </section>
+
+        <section className="ds-glass ds-card ds-stack-sm">
+          <div className="ds-row-between">
+            <h2 className="ds-label" style={{ margin: 0 }}>
+              Backup Snapshot
+            </h2>
             <Button
               variant="secondary"
               size="sm"
@@ -415,62 +396,48 @@ export function CacheView({
               <span>Open Backup Folder</span>
             </Button>
           </div>
+          <div className="ds-row-between">
+            <span className="ds-metric-value">
+              {snapshot?.backupSizeFormatted ?? 'N/A'}
+            </span>
+            {snapshot?.backupFolderStatus && (
+              <StatusPill
+                tone={getBackupStatusTone(snapshot.backupFolderStatus.status)}
+              >
+                {snapshot.backupFolderStatus.message}
+              </StatusPill>
+            )}
+          </div>
+          {progress !== null ? (
+            <div className="ds-stack-sm">
+              <label htmlFor="cache-op-progress" className="ds-label">
+                {progress.operation === 'restore'
+                  ? 'Restoring backup...'
+                  : 'Backing up cache...'}{' '}
+                ({progress.percent}%)
+              </label>
+              <progress
+                id="cache-op-progress"
+                className="ds-progress ds-progress-ok"
+                value={progress.percent}
+                max={100}
+              />
+            </div>
+          ) : (
+            <>
+              <span className="ds-hint">
+                Last backup:{' '}
+                {formatLastBackup(snapshot?.lastBackupDateTimeIso ?? null)}
+                {lastFeedback ? ` · ${lastFeedback}` : ''}
+              </span>
+              <span className="ds-hint ds-mono ds-ellipsis">
+                <Archive size={12} strokeWidth={2} aria-hidden="true" style={{ verticalAlign: '-1px', marginRight: 6 }} />
+                {snapshot?.backupFolderPath || 'No backup folder configured'}
+              </span>
+            </>
+          )}
         </section>
       </div>
-
-      <GlassPanel title="Primary Actions">
-        <div className="ds-row">
-          <Button
-            variant="primary"
-            disabled={busyAction !== null || !hasBackupPath}
-            loading={busyAction === 'backup'}
-            loadingLabel="Backing Up..."
-            onClick={() => {
-              if (snapshot?.backupLargerThanExplorer) {
-                setConfirmAction('backupOverwrite');
-              } else {
-                void runCacheOp('backup', () => bridge.cache.backup());
-              }
-            }}
-          >
-            Backup Now
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={busyAction !== null || !hasBackupPath}
-            loading={busyAction === 'restore'}
-            onClick={() => setConfirmAction('restore')}
-          >
-            Restore Backup
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={busyAction !== null || !hasBackupPath}
-            loading={busyAction === 'forceRestore'}
-            onClick={() => setConfirmAction('forceRestore')}
-          >
-            Force Restore (Restart Explorer)
-          </Button>
-          <Button
-            variant="danger"
-            disabled={busyAction !== null || !hasBackupPath}
-            loading={busyAction === 'clearBackup'}
-            onClick={() => setConfirmAction('clearBackup')}
-          >
-            <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-            <span>Clear Backup</span>
-          </Button>
-          <Button
-            variant="danger"
-            disabled={busyAction !== null}
-            loading={busyAction === 'clearCache'}
-            onClick={() => setConfirmAction('clearCache')}
-          >
-            <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-            <span>Clear Explorer Cache</span>
-          </Button>
-        </div>
-      </GlassPanel>
 
       {snapshot && snapshot.buckets.some((b) => b.sizeBytes > 0) && (
         <GlassPanel
@@ -573,38 +540,7 @@ export function CacheView({
         />
       </GlassPanel>
 
-      <GlassPanel
-        title="Backup Location &amp; Advanced Policy"
-        actions={
-          <div className="ds-row">
-            <select
-              id={resetScopeId}
-              aria-label="Reset scope"
-              className="ds-select"
-              style={{ width: 'auto', minBlockSize: 34, padding: '6px 12px' }}
-              value={resetScope}
-              onChange={(e) =>
-                setResetScope(
-                  e.target.value as 'all' | 'general' | 'cache' | 'backup'
-                )
-              }
-            >
-              <option value="all">All Policy Settings</option>
-              <option value="general">Intervals &amp; Format</option>
-              <option value="cache">Cache Behavior</option>
-              <option value="backup">Backup Location</option>
-            </select>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setConfirmAction('resetDefaults')}
-            >
-              <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
-              <span>Reset Defaults</span>
-            </Button>
-          </div>
-        }
-      >
+      <GlassPanel title="Backup Location &amp; Advanced Policy">
         <div className="ds-field">
           <label htmlFor={backupFolderId} className="ds-label">
             Backup Folder Path
@@ -801,6 +737,64 @@ export function CacheView({
           </Button>
         </div>
       </GlassPanel>
+
+      <section className="ds-danger-zone" aria-label="Maintenance and danger zone">
+        <div className="ds-danger-zone-meta">
+          <h2 className="ds-danger-zone-title">Maintenance &amp; Danger Zone</h2>
+          <p className="ds-hint">
+            Destructive operations permanently delete local thumbnail cache
+            databases, backup snapshots, or custom cache policies.
+          </p>
+        </div>
+
+        <div className="ds-row">
+          <select
+            id={resetScopeId}
+            aria-label="Reset scope"
+            className="ds-select"
+            style={{ width: 'auto', minBlockSize: 34, padding: '6px 12px' }}
+            value={resetScope}
+            onChange={(e) =>
+              setResetScope(
+                e.target.value as 'all' | 'general' | 'cache' | 'backup'
+              )
+            }
+          >
+            <option value="all">All Policy Settings</option>
+            <option value="general">Intervals &amp; Format</option>
+            <option value="cache">Cache Behavior</option>
+            <option value="backup">Backup Location</option>
+          </select>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setConfirmAction('resetDefaults')}
+          >
+            <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Reset Defaults</span>
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={busyAction !== null || !hasBackupPath}
+            loading={busyAction === 'clearBackup'}
+            onClick={() => setConfirmAction('clearBackup')}
+          >
+            <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Clear Backup</span>
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={busyAction !== null}
+            loading={busyAction === 'clearCache'}
+            onClick={() => setConfirmAction('clearCache')}
+          >
+            <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Clear Explorer Cache</span>
+          </Button>
+        </div>
+      </section>
 
       <ConfirmDialog
         open={confirmAction === 'backupOverwrite'}

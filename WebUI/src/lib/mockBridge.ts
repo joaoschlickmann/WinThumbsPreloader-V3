@@ -314,11 +314,11 @@ export async function handleMockCommand<T>(
           window.matchMedia?.('(prefers-color-scheme: dark)').matches);
       return {
         appName: 'WinThumbsPreloader',
-        version: '3.3.0',
+        version: '3.4.0',
         isRunningAsAdmin: false,
         theme: mockState.theme,
         effectiveDarkMode: Boolean(dark),
-        initialView: 'preload',
+        initialView: 'overview',
         isWebView2: false,
         invalidLaunchPathWarning: null,
       } satisfies BootstrapData as T;
@@ -345,9 +345,9 @@ export async function handleMockCommand<T>(
     case 'app.checkForUpdates':
       return {
         state: 'Updated',
-        currentVersion: '3.3.0',
-        latestVersion: '3.3.0',
-        releaseTag: 'v3.3.0',
+        currentVersion: '3.4.0',
+        latestVersion: '3.4.0',
+        releaseTag: 'v3.4.0',
         releasePageUrl:
           'https://github.com/joaoschlickmann/WinThumbsPreloader-V3/releases',
         hasInstallerAsset: false,

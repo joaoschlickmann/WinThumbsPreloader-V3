@@ -130,7 +130,7 @@ namespace WinThumbsPreloader.Services
                     return clean;
             }
 
-            return asm.GetName().Version?.ToString(3) ?? "3.3.0";
+            return asm.GetName().Version?.ToString(3) ?? "3.4.0";
         }
 
         public static string SerializeEvent(string eventName, object? payload)
@@ -268,7 +268,7 @@ namespace WinThumbsPreloader.Services
                         isRunningAsAdmin = Program.IsRunningAsAdministrator(),
                         theme,
                         effectiveDarkMode = ThemeHelper.ResolveEffectiveDarkMode(theme),
-                        initialView = _getInitialView?.Invoke() ?? "preload",
+                        initialView = _getInitialView?.Invoke() ?? "overview",
                         isWebView2 = true,
                         invalidLaunchPathWarning = invalidWarning
                     };

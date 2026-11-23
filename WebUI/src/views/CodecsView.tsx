@@ -28,7 +28,7 @@ export interface CodecsViewProps {
 }
 
 function getStatusTone(family: CodecFamilyDto): StatusTone {
-  if (family.isEnabled) return 'active';
+  if (family.isEnabled) return 'ok';
   if (family.isPartiallyEnabled || family.hasExternalHandler) return 'warning';
   return 'neutral';
 }
@@ -201,17 +201,48 @@ export function CodecsView({
             PDF, Illustrator, EPS, InDesign, XD, SVG, CorelDRAW, Affinity, and
             Camera RAW formats.
           </p>
+          <div className="ds-row" style={{ marginTop: 10 }}>
+            <StatusPill
+              tone={isElevated ? 'ok' : 'neutral'}
+              icon={<Shield size={13} strokeWidth={2} aria-hidden="true" />}
+            >
+              {isElevated ? 'Administrator (HKLM + HKCU)' : 'Standard User (HKCU)'}
+            </StatusPill>
+            <StatusPill tone={activeCount > 0 ? 'ok' : 'neutral'}>
+              {activeCount}/{totalCount} Active
+            </StatusPill>
+          </div>
         </div>
-        <div className="ds-row">
-          <StatusPill
-            tone={isElevated ? 'active' : 'neutral'}
-            icon={<Shield size={13} strokeWidth={2} aria-hidden="true" />}
+        <div className="ds-primary-actions">
+          <Button
+            variant="primary"
+            loading={busyAction === 'apply'}
+            loadingLabel="Applying..."
+            disabled={!bundleOk || busyAction !== null}
+            onClick={() => requestApply(false)}
           >
-            {isElevated ? 'Administrator (HKLM + HKCU)' : 'Standard User (HKCU)'}
-          </StatusPill>
-          <StatusPill tone={activeCount > 0 ? 'active' : 'neutral'}>
-            {activeCount}/{totalCount} Active
-          </StatusPill>
+            <span>Apply Selection</span>
+          </Button>
+          <Button
+            variant="secondary"
+            loading={busyAction === 'elevateApply'}
+            disabled={!bundleOk || busyAction !== null}
+            onClick={() => requestApply(!isElevated)}
+          >
+            <Shield size={14} strokeWidth={2} aria-hidden="true" />
+            <span>
+              {isElevated ? 'Apply System-Wide (HKLM)' : 'Elevate & Apply (UAC)'}
+            </span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onNavigate('cache')}
+            disabled={busyAction !== null}
+          >
+            <Database size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Open Cache Manager</span>
+          </Button>
         </div>
       </div>
 
@@ -369,54 +400,27 @@ export function CodecsView({
             })}
           </div>
         )}
-
-        <hr className="ds-divider" />
-
-        <div className="ds-row-between">
-          <div className="ds-row">
-            <Button
-              variant="secondary"
-              onClick={() => onNavigate('cache')}
-              disabled={busyAction !== null}
-            >
-              <Database size={14} strokeWidth={2} aria-hidden="true" />
-              <span>Open Cache Manager</span>
-            </Button>
-            <Button
-              variant="danger"
-              loading={busyAction === 'uninstall'}
-              disabled={busyAction !== null}
-              onClick={() => setConfirmUninstallOpen(true)}
-            >
-              <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-              <span>Uninstall All</span>
-            </Button>
-          </div>
-
-          <div className="ds-row">
-            <Button
-              variant="secondary"
-              loading={busyAction === 'elevateApply'}
-              disabled={!bundleOk || busyAction !== null}
-              onClick={() => requestApply(!isElevated)}
-            >
-              <Shield size={14} strokeWidth={2} aria-hidden="true" />
-              <span>
-                {isElevated ? 'Apply System-Wide (HKLM)' : 'Elevate & Apply (UAC)'}
-              </span>
-            </Button>
-            <Button
-              variant="primary"
-              loading={busyAction === 'apply'}
-              loadingLabel="Applying..."
-              disabled={!bundleOk || busyAction !== null}
-              onClick={() => requestApply(false)}
-            >
-              <span>Apply Selection</span>
-            </Button>
-          </div>
-        </div>
       </GlassPanel>
+
+      <section className="ds-danger-zone" aria-label="Codec unregistration">
+        <div className="ds-danger-zone-meta">
+          <h2 className="ds-danger-zone-title">Codec Unregistration</h2>
+          <p className="ds-hint">
+            Removes WinThumbsCodecs registrations and restores any previously
+            backed-up third-party shell handlers.
+          </p>
+        </div>
+        <Button
+          variant="danger"
+          size="sm"
+          loading={busyAction === 'uninstall'}
+          disabled={busyAction !== null}
+          onClick={() => setConfirmUninstallOpen(true)}
+        >
+          <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+          <span>Uninstall All</span>
+        </Button>
+      </section>
 
       <ConfirmDialog
         open={Boolean(pendingApplyMode)}
