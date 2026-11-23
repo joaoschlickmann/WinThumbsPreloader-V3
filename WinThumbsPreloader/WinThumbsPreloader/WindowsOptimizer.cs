@@ -188,6 +188,7 @@ namespace WinThumbsPreloader
             private readonly Func<bool, bool> _setSilentCleanupDisabled;
 
             public bool MachineWritable { get; }
+            public bool IsSystemDefault { get; }
 
             private RegistryHiveScope(
                 RegistryKey userBase,
@@ -197,6 +198,7 @@ namespace WinThumbsPreloader
                 RegistryKey machineWowBase,
                 string machineWowPrefix,
                 bool machineWritable,
+                bool isSystemDefault,
                 Func<bool> querySilentCleanupDisabled,
                 Func<bool, bool> setSilentCleanupDisabled)
             {
@@ -207,6 +209,7 @@ namespace WinThumbsPreloader
                 _machineWowBase = machineWowBase;
                 _machineWowPrefix = machineWowPrefix;
                 MachineWritable = machineWritable;
+                IsSystemDefault = isSystemDefault;
                 _querySilentCleanupDisabled = querySilentCleanupDisabled;
                 _setSilentCleanupDisabled = setSilentCleanupDisabled;
             }
@@ -219,6 +222,7 @@ namespace WinThumbsPreloader
                 machineWowBase: Registry.LocalMachine,
                 machineWowPrefix: @"SOFTWARE\WOW6432Node",
                 machineWritable: IsCurrentProcessElevated(),
+                isSystemDefault: true,
                 querySilentCleanupDisabled: QuerySystemSilentCleanupTaskDisabled,
                 setSilentCleanupDisabled: SetSystemSilentCleanupTaskDisabled);
 
@@ -238,6 +242,7 @@ namespace WinThumbsPreloader
                     machineWowBase: rootKey,
                     machineWowPrefix: trimmed + @"\HKLM_WOW6432",
                     machineWritable: simulateMachineWritable,
+                    isSystemDefault: false,
                     querySilentCleanupDisabled: querySilentCleanupDisabled ?? (() => false),
                     setSilentCleanupDisabled: setSilentCleanupDisabled ?? (_ => simulateMachineWritable));
             }
@@ -254,6 +259,16 @@ namespace WinThumbsPreloader
             {
                 string fullPath = CombinePath(_userPrefix, subKeyPath);
                 _userBase.DeleteSubKeyTree(fullPath, throwOnMissingSubKey: false);
+            }
+
+            public void DeleteUserSubKey(string subKeyPath)
+            {
+                string fullPath = CombinePath(_userPrefix, subKeyPath);
+                try
+                {
+                    _userBase.DeleteSubKey(fullPath, throwOnMissingSubKey: false);
+                }
+                catch { }
             }
 
             public RegistryKey? OpenMachineKey(string subKeyPath, bool writable)
@@ -283,6 +298,19 @@ namespace WinThumbsPreloader
                 try
                 {
                     _machineBase.DeleteSubKeyTree(fullPath, throwOnMissingSubKey: false);
+                }
+                catch { }
+            }
+
+            public void DeleteMachineSubKey(string subKeyPath)
+            {
+                if (!MachineWritable)
+                    return;
+
+                string fullPath = CombinePath(_machinePrefix, subKeyPath);
+                try
+                {
+                    _machineBase.DeleteSubKey(fullPath, throwOnMissingSubKey: false);
                 }
                 catch { }
             }
@@ -787,7 +815,9 @@ namespace WinThumbsPreloader
             string trimmedArgs = cliFlag.Trim();
             bool allowed = trimmedArgs.Equals("-restore-defaults", StringComparison.OrdinalIgnoreCase) ||
                            trimmedArgs.Equals("-apply-optimizations", StringComparison.OrdinalIgnoreCase) ||
-                           trimmedArgs.StartsWith("-apply-optimizations ", StringComparison.OrdinalIgnoreCase);
+                           trimmedArgs.StartsWith("-apply-optimizations ", StringComparison.OrdinalIgnoreCase) ||
+                           trimmedArgs.Equals("-uninstall-codecs", StringComparison.OrdinalIgnoreCase) ||
+                           trimmedArgs.StartsWith("-apply-codecs ", StringComparison.OrdinalIgnoreCase);
 
             if (!allowed || trimmedArgs.IndexOfAny(['"', '\'', '&', '|', ';', '\r', '\n']) >= 0)
                 return false;

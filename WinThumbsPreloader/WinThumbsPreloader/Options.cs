@@ -14,11 +14,15 @@ namespace WinThumbsPreloader
         public bool startMinimized;
         public bool reopenSettings;
         public bool reopenOptimizer;
+        public bool reopenCodecs;
         public bool applyOptimizations;
         public bool hasExplicitOptimizationProfile;
         public int optimizationProfileMask;
         public int optimizationIconCacheKb = 8192;
         public bool restoreDefaults;
+        public bool applyCodecs;
+        public int codecsMask;
+        public bool uninstallCodecs;
         public bool shutdownExisting;
         public bool unknownFlagProvided;
         public bool invalidPathProvided;
@@ -30,6 +34,8 @@ namespace WinThumbsPreloader
         public bool IsGuiLaunch =>
             !applyOptimizations &&
             !restoreDefaults &&
+            !applyCodecs &&
+            !uninstallCodecs &&
             !shutdownExisting &&
             !unknownFlagProvided &&
             (startMinimized || badOrNoArguments || paths == null || paths.Count == 0);
@@ -80,6 +86,66 @@ namespace WinThumbsPreloader
                 else if (arg.Equals("-reopenoptimizer", StringComparison.OrdinalIgnoreCase))
                 {
                     reopenOptimizer = true;
+                    break;
+                }
+                else if (arg.Equals("-reopencodecs", StringComparison.OrdinalIgnoreCase))
+                {
+                    reopenCodecs = true;
+                    break;
+                }
+                else if (arg.Equals("-apply-codecs", StringComparison.OrdinalIgnoreCase))
+                {
+                    applyCodecs = true;
+                    bool hasMask = false;
+
+                    for (int j = i + 1; j < arguments.Length; j++)
+                    {
+                        string subArg = arguments[j]?.Trim() ?? string.Empty;
+                        if (subArg.StartsWith("-codecs-mask:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ReadOnlySpan<char> maskSpan = subArg.AsSpan("-codecs-mask:".Length).Trim();
+                            bool parsedMask = maskSpan.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                                ? int.TryParse(maskSpan.Slice(2), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out codecsMask)
+                                : int.TryParse(maskSpan, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out codecsMask);
+
+                            if (!parsedMask || codecsMask < 0 || codecsMask > CodecManager.AllCodecsMask)
+                            {
+                                applyCodecs = false;
+                                unknownFlagProvided = true;
+                                badOrNoArguments = true;
+                                return;
+                            }
+
+                            hasMask = true;
+                        }
+                        else
+                        {
+                            applyCodecs = false;
+                            unknownFlagProvided = true;
+                            badOrNoArguments = true;
+                            return;
+                        }
+                    }
+
+                    if (!hasMask)
+                    {
+                        applyCodecs = false;
+                        unknownFlagProvided = true;
+                        badOrNoArguments = true;
+                        return;
+                    }
+
+                    break;
+                }
+                else if (arg.Equals("-uninstall-codecs", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 1 < arguments.Length)
+                    {
+                        unknownFlagProvided = true;
+                        badOrNoArguments = true;
+                        return;
+                    }
+                    uninstallCodecs = true;
                     break;
                 }
                 else if (arg.Equals("-apply-optimizations", StringComparison.OrdinalIgnoreCase))

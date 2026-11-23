@@ -90,8 +90,8 @@ namespace WinThumbsPreloader
 
                 return new HashSet<string>(
                 [
-                    ".avi",".avif",".bmp",".gif",".heic",".heif",".jpg",".jpeg",
-                    ".mkv",".mov",".mp4",".png",".svg",".tif",".tiff",".webp"
+                    ".ai",".avi",".avif",".bmp",".gif",".heic",".heif",".jpg",".jpeg",
+                    ".mkv",".mov",".mp4",".png",".psb",".psd",".svg",".tif",".tiff",".webp"
                 ], StringComparer.OrdinalIgnoreCase);
             }
         }

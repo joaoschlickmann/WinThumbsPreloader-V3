@@ -92,6 +92,20 @@ namespace WinThumbsPreloader
                 return;
             }
 
+            if (options.applyCodecs)
+            {
+                WriteLine($"Applying thumbnail codec mask 0x{options.codecsMask:X3} via CLI helper.", LoggingFrequency.AllLogging);
+                CodecManager.ApplyCodecSelection(options.codecsMask, broadcastShellChange: true);
+                return;
+            }
+
+            if (options.uninstallCodecs)
+            {
+                WriteLine("Uninstalling thumbnail codecs via CLI helper.", LoggingFrequency.AllLogging);
+                CodecManager.UninstallAllCodecs(broadcastShellChange: true);
+                return;
+            }
+
             if (options.IsGuiLaunch)
             {
                 if (!SingleInstanceCoordinator.TryAcquireOrNotifyExisting(

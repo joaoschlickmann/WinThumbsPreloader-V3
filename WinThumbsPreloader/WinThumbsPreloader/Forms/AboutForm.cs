@@ -43,6 +43,9 @@ namespace WinThumbsPreloader
             PreloadTooltip.SetToolTip(
                 OptimizeButton,
                 "Open Windows Optimizer to protect thumbnail cache, disable SMB Thumbs.db, and speed up Windows Explorer.");
+            PreloadTooltip.SetToolTip(
+                CodecsButton,
+                "Install or manage built-in open-source thumbnail codecs (PSD, PSB, PDF, AI, EPS, INDD, XD, SVG, CDR, Affinity, RAW).");
         }
 
         private void AboutForm_Load(object sender, EventArgs e)
@@ -65,6 +68,11 @@ namespace WinThumbsPreloader
             {
                 Program.AppOptions.reopenOptimizer = false;
                 this.OpenSecondaryFormCentered(new WindowsOptimizerForm());
+            }
+            else if (Program.AppOptions.reopenCodecs)
+            {
+                Program.AppOptions.reopenCodecs = false;
+                this.OpenSecondaryFormCentered(new CodecsForm());
             }
         }
 
@@ -277,6 +285,12 @@ namespace WinThumbsPreloader
         {
             WriteLine("Opening WindowsOptimizerForm from AboutForm", LoggingFrequency.GUILogging);
             this.OpenSecondaryFormCentered(new WindowsOptimizerForm());
+        }
+
+        private void CodecsButton_Click(object sender, EventArgs e)
+        {
+            WriteLine("Opening CodecsForm from AboutForm", LoggingFrequency.GUILogging);
+            this.OpenSecondaryFormCentered(new CodecsForm());
         }
 
         private void PreloadButton_Click(object sender, EventArgs e)

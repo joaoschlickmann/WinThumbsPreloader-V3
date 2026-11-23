@@ -35,6 +35,7 @@ namespace WinThumbsPreloader
         public int autoRestoreInterval;
         private ToolStripMenuItem mainWindowToolStripMenuItem;
         private ToolStripMenuItem windowsOptimizerToolStripMenuItem;
+        private ToolStripMenuItem codecsToolStripMenuItem;
         private ToolStripMenuItem checkForUpdatesToolStripMenuItem;
         private UpdateCheckResult _trayUpdateResult;
         private bool _startedMinimizedSession;
@@ -75,12 +76,15 @@ namespace WinThumbsPreloader
             mainWindowToolStripMenuItem.Click += mainWindowToolStripMenuItem_Click;
             windowsOptimizerToolStripMenuItem = new ToolStripMenuItem("Windows Optimizer...");
             windowsOptimizerToolStripMenuItem.Click += OptimizeButton_Click;
+            codecsToolStripMenuItem = new ToolStripMenuItem("Thumbnail Codecs...");
+            codecsToolStripMenuItem.Click += CodecsToolStripMenuItem_Click;
 
             int openIndex = contextMenuStrip1.Items.IndexOf(openToolStripMenuItem);
             if (openIndex >= 0)
             {
                 contextMenuStrip1.Items.Insert(openIndex + 1, mainWindowToolStripMenuItem);
                 contextMenuStrip1.Items.Insert(openIndex + 2, windowsOptimizerToolStripMenuItem);
+                contextMenuStrip1.Items.Insert(openIndex + 3, codecsToolStripMenuItem);
             }
             else
             {
@@ -121,6 +125,22 @@ namespace WinThumbsPreloader
                 optimizerForm.StartPosition = FormStartPosition.CenterScreen;
                 optimizerForm.Show();
                 optimizerForm.Activate();
+            }
+        }
+
+        private void CodecsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            WriteLine("Opening CodecsForm from CacheForm.", LoggingFrequency.GUILogging);
+            var codecsForm = new CodecsForm();
+            if (Visible && WindowState != FormWindowState.Minimized)
+            {
+                this.OpenSecondaryFormCentered(codecsForm);
+            }
+            else
+            {
+                codecsForm.StartPosition = FormStartPosition.CenterScreen;
+                codecsForm.Show();
+                codecsForm.Activate();
             }
         }
 

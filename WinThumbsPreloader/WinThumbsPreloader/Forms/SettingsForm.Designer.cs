@@ -55,6 +55,7 @@ namespace WinThumbsPreloader
             SettingsToolTips = new System.Windows.Forms.ToolTip(components);
             AdvancedButton = new System.Windows.Forms.Button();
             WindowsOptimizerButton = new System.Windows.Forms.Button();
+            CodecsButton = new System.Windows.Forms.Button();
             OptionsGroupBox.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)ThreadsNumericUpDown).BeginInit();
             ExtensionsGroupBox.SuspendLayout();
@@ -147,9 +148,21 @@ namespace WinThumbsPreloader
             ExtensionsGroupBox.Controls.Add(ExtensionsTextBox);
             ExtensionsGroupBox.Controls.Add(DefaultExtensionsButton);
             ExtensionsGroupBox.Controls.Add(ClearExtensionsButton);
+            ExtensionsGroupBox.Controls.Add(CodecsButton);
             resources.ApplyResources(ExtensionsGroupBox, "ExtensionsGroupBox");
             ExtensionsGroupBox.Name = "ExtensionsGroupBox";
             ExtensionsGroupBox.TabStop = false;
+            // 
+            // CodecsButton
+            // 
+            CodecsButton.Location = new System.Drawing.Point(199, 171);
+            CodecsButton.Name = "CodecsButton";
+            CodecsButton.Size = new System.Drawing.Size(80, 27);
+            CodecsButton.TabIndex = 5;
+            CodecsButton.Text = "Codecs";
+            SettingsToolTips.SetToolTip(CodecsButton, "Install or manage built-in open-source thumbnail codecs.");
+            CodecsButton.UseVisualStyleBackColor = true;
+            CodecsButton.Click += CodecsButton_Click;
             // 
             // label1
             // 
@@ -254,6 +267,7 @@ namespace WinThumbsPreloader
         private System.Windows.Forms.ToolTip SettingsToolTips;
         private System.Windows.Forms.Button AdvancedButton;
         private System.Windows.Forms.Button WindowsOptimizerButton;
+        private System.Windows.Forms.Button CodecsButton;
         private System.Windows.Forms.Button ExportButton;
         private System.Windows.Forms.Label label1;
     }

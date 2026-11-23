@@ -395,5 +395,20 @@ namespace WinThumbsPreloader
             WindowsOptimizerForm optimizerForm = new WindowsOptimizerForm();
             this.OpenSecondaryFormCentered(optimizerForm);
         }
+
+        private void CodecsButton_Click(object sender, EventArgs e)
+        {
+            WriteLine("Opening Codecs management form from SettingsForm.", LoggingFrequency.GUILogging);
+            CodecsForm codecsForm = new CodecsForm();
+            codecsForm.FormClosed += (s, args) =>
+            {
+                if (codecsForm.ExtensionsSynced && !IsDisposed)
+                {
+                    ExtensionsTextBox.Text = Settings.Default.ExtensionsText;
+                    UpdateExtensionsTextBoxDisplay();
+                }
+            };
+            this.OpenSecondaryFormCentered(codecsForm);
+        }
     }
 }
